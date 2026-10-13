@@ -1,0 +1,18 @@
+{
+  "name": "obsidian-md-diagram-cards",
+  "version": "0.1.0",
+  "description": "Turn [d-state] / [d-tree] / [d-orthogonal] blocks into Anki cards.",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc --noEmit --skipLibCheck && node esbuild.config.mjs production"
+  },
+  "keywords": ["obsidian", "anki"],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "esbuild": "^0.25.3",
+    "obsidian": "1.12.3",
+    "typescript": "^5.8.3"
+  }
+}

@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "md-diagram-cards"
+version = "0.1.0"
+description = "把 md 里的 diagram 结构转成 Anki 卡片"
+requires-python = ">=3.9"
+
+[project.scripts]
+md-diagram-cards = "md_diagram_cards.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
