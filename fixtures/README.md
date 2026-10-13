@@ -23,6 +23,7 @@
 | 13 | `13-real-before-7-week-war` | 5 列正交表 + 较长单元格内容 |
 | 14 | `14-cell-linebreak` | 连续 `<br>` 丢弃空片段；全空行跳过 |
 | 15 | `15-tree-nested` | `[d-tree]` 嵌套缩进 → 父问子卡片 + `means` 卡 |
+| 16 | `16-multi-information` | `### [information]` 标记；多个 Information 块合并（含旧 `## Information` 兼容） |
 
 ## 已澄清（无待定项）
 
@@ -33,6 +34,10 @@
 - **`#### [key] ...` 是普通卡片**，`[key]` 只是恰好出现在问题开头的引用，不是独立语法
 - **合法指针只有三种**：`@cat` / `@cat: value` / `@custom(KEY)`
   - `@[KEY]` 与 `@time: [KEY]` 非法
+  - `@ability` 这种裸写不是内置 category（内置只有 condition / member_amount / place / effect）→ 警告；自定义外链要写 `@custom(ability)`
+- **Information 块**：推荐 `### [information]` 专属标记；一份文档可写多个，解析时**合并成一个全局字典**
+  - 同名项的不同外链取并集，同名外链后者覆盖前者
+  - 旧的纯 `## Information` 标题仍兼容
 - **表格是标准单行 CommonMark**：每行以 `|` 开头和结尾；单元格内换行用 `<br>`
 - **Category 表只收录例子里出现过的 category**，未收录 → 警告
 - **警告仅提示**：不阻断同步，不写回源文件

@@ -1,6 +1,7 @@
 # Diagram 卡片系统 — Spec
 
-> 状态：草案 v0.9
+> 状态：草案 v0.10
+> v0.10 变更：Information 块新增专属标记 `### [information]`；文档里所有 Information 块会**合并**成一个全局字典；旧的纯 `## Information` 标题仍兼容。
 > v0.9 变更：`[d-tree]` 确认为**嵌套**无序列表，产「父问子」卡片。
 > v0.8 变更：修正 `[d-state]` 与 `[d-tree]` 的关系（时间线=状态机，树状图是另一类）；表格确认为标准单行 CommonMark（行尾 `|` 必须），删除跨行单元格规则；删除 `ability` category；警告仅提示。
 
@@ -183,7 +184,7 @@ TEST<br><br><br>LINE4
 
 ### R6 — 未解析外链
 
-外链在 `## Information` 里查不到 → **警告，仅提示**（不阻断同步、不写回源文件）。
+外链在 Information 区（`### [information]`）里查不到 → **警告，仅提示**（不阻断同步、不写回源文件）。
 
 ### R7 — 推论行边界
 
@@ -212,9 +213,9 @@ TEST<br><br><br>LINE4
 
 | 语法 | 值来源 | 说明 |
 | --- | --- | --- |
-| `@cat` | `## Information` 里 `项.cat` | 查不到 → 警告 |
+| `@cat` | Information 区里 `项.cat` | 查不到 → 警告 |
 | `@cat: value` | 内联，与写在 Information 等价 | value 吃到行尾或下一个 `@` |
-| `@custom(KEY)` | `## Information` 里 `KEY` | `custom` 是关键字；`@foo(bar)` 不触发 |
+| `@custom(KEY)` | Information 区里 `KEY` | `custom` 是关键字；`@foo(bar)` 不触发 |
 
 > `@[KEY]` 与 `@time: [KEY]` **不是合法语法**，不实现。
 
@@ -252,18 +253,48 @@ TEST<br><br><br>LINE4
 
 ## 8. Information 区块
 
+Information 块用**专属标记** `[information]` 声明（层级不限，建议 `###`）：
+
 ```markdown
-## Information
+### [information]
 
 - Zollverein
-- member_amount: 35
+	- member_amount: 35
 
 - Biarritz meeting
-- Nap 3 want:
-- neutral and mediating
-- wants Rhineland
+	- Nap 3 want:
+		- neutral and mediating
+		- wants Rhineland
 ```
 
-- `- 项` 是父节点
+- `- 项` 是父节点（深度 0）
 - `- 外链: 值` 是单值
-- `- 外链:` + 缩进列表 是列表值
+- `- 外链:` + 缩进列表 是列表值（值在更深一层）
+- 空 bullet（如行尾多敲的 `- `）直接忽略
+
+### 8.1 多个 Information 块会合并
+
+一份文档里可以有**任意多个** `[information]` 块，解析时按出现顺序合并成
+**同一个**全局字典 `项 → {外链 → 值}`：
+
+- 同一个项分散在多个块里 → 不同外链取并集
+- 同一个项的同一个外链重复出现 → **后出现的块覆盖先出现的**
+
+```markdown
+### [information]
+- King of Prus
+	- ability: declare war and make peace
+
+### [information]
+- King of Prus
+	- position: president of the confederation
+```
+
+合并结果：
+
+```text
+{ "King of Prus": { "ability": "...", "position": "..." } }
+```
+
+> **兼容**：旧的纯 `## Information` 标题（不带 `[information]` 标记）仍然会被识别并合并，
+> 但推荐一律写成 `### [information]`，避免和普通组织标题混淆。

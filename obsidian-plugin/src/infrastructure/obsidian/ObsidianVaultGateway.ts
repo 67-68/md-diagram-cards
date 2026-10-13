@@ -19,6 +19,14 @@ export class ObsidianVaultGateway implements VaultGateway {
     return this.app.vault.getMarkdownFiles().map((file) => file.path);
   }
 
+  listFolders(): string[] {
+    // includeRoot=false：根目录不是一个能用来过滤的前缀。
+    return this.app.vault
+      .getAllFolders(false)
+      .map((folder) => folder.path)
+      .sort((left, right) => left.localeCompare(right));
+  }
+
   toAbsolute(relativePath: string): string | null {
     const base = this.basePath();
     if (!base) {

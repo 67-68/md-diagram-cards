@@ -11,6 +11,8 @@ from .model import Diagram, Inference, Item, Link, Row
 
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
 DIAGRAM_MARKER_RE = re.compile(r"^\[d-([a-z]+)\]\s*(.*)$")
+# Information 块的专属标记：`### [information]`（大小写不敏感，标题层级不限）。
+INFORMATION_MARKER_RE = re.compile(r"^\[information\]\s*(.*)$", re.IGNORECASE)
 TIME_PREFIX_RE = re.compile(r"^\[([^\]]+)\]\s*(\S.*)$")
 INFERENCE_RE = re.compile(r"^=>\s*(.*?)\s*=>\s*$")
 BULLET_RE = re.compile(r"^([ \t]*)(?:[-*+]|\d+[.)])\s+(.*?)\s*$")
@@ -61,11 +63,34 @@ def split_blocks(lines: list[str]) -> list[dict]:
 
 # ---------------------------------------------------------------- Information
 
+def is_information_block(title: str) -> bool:
+    """判断一个标题是不是 Information 块。
+
+    推荐写法是专属标记 `### [information]`；纯 `Information` 标题是旧写法，
+    继续兼容（大小写、层级都不敏感）。
+    """
+    text = title.strip()
+    if INFORMATION_MARKER_RE.match(text):
+        return True
+    return text.lower() == "information"
+
+
 def parse_information(blocks: list[dict]) -> dict:
+    """收集文档里**所有** Information 块，按顺序合并成一个大 dict。
+
+    合并规则：`项 → {外链 → 值}`。同一个项出现在多个块里时，后者按外链覆盖前者，
+    不同外链取并集。后出现的块优先。
+    """
+    merged: dict[str, dict] = {}
     for block in blocks:
-        if block["title"].strip().lower() == "information":
-            return _parse_information_body(block["body"])
-    return {}
+        if is_information_block(block["title"]):
+            _merge_information(merged, _parse_information_body(block["body"]))
+    return merged
+
+
+def _merge_information(target: dict[str, dict], incoming: dict[str, dict]) -> None:
+    for item_name, links in incoming.items():
+        target.setdefault(item_name, {}).update(links)
 
 
 def _parse_information_body(lines: list[str]) -> dict:
@@ -87,6 +112,10 @@ def _parse_information_body(lines: list[str]) -> dict:
 
         depth = depth_of(len(match.group(1).expandtabs(4)))
         text = match.group(2).strip()
+
+        # 空 bullet（例如行尾多敲了一个 `- `）不产生任何条目。
+        if not text:
+            continue
 
         if depth == 0:
             current_key = text

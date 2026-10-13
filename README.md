@@ -1,0 +1,145 @@
+# md-diagram-cards
+
+把 Markdown 里的 diagram 结构转成 Anki 卡片，输出格式直接供
+[Anki Heading Sync](https://github.com/panAtGitHub) 消费。
+
+- 语法规格：[`spec.md`](spec.md)
+- 架构与分层：[`architecture.md`](architecture.md)
+- 回归基线：[`fixtures/`](fixtures/)（15 组）
+
+## 语法速览
+
+三种 diagram 标记：
+
+```markdown
+### [d-state] Before 7 week war      # 时间线 / 状态机
+### [d-tree] Prussian dominance      # 树状图（嵌套列表）
+### [d-orthogonal] situation 1865    # 正交表
+```
+
+产出：
+
+```markdown
+#### [cloze] Before 7 week war
+- [1865 Oct] Biarritz meeting
+- [1866 Apr] Italy Prussian Alliance
+```
+
+答案项数 ≥ 2 自动加 `[cloze]`。
+
+没有 `[d-*]` 标记的标题只作组织用，**不出卡** —— 这是「提示成功但没有卡片」最常见的原因。
+插件设置页顶部有一份同样的速查。
+
+### Information 区（外链取值）
+
+外链（`@...`）的值从 `[information]` 块里查。建议用专属标记 `### [information]`，
+一份文档可以写**多个** `[information]` 块，解析时会自动合并成一个全局字典
+（同名项的不同外链取并集，同名外链后者覆盖前者）：
+
+```markdown
+### [information]
+
+- Zollverein
+    - member_amount: 35
+
+- Biarritz meeting
+    - Nap 3 want:
+        - neutral and mediating
+        - wants Rhineland
+```
+
+- `- 项` 是父节点；`- 外链: 值` 是单值；`- 外链:` + 缩进列表是多值
+- 引用只有三种合法写法：
+  - `@condition` / `@member_amount` / `@place` / `@effect` —— 内置 category
+  - `@condition: value` —— 内联值
+  - `@custom(KEY)` —— 引用 Information 里的任意外链，例如 `@custom(Nap 3 want)`
+- `@ability` 这种裸写法不是内置 category，会变成警告；要写 `@custom(ability)`
+
+> 旧的纯 `## Information` 标题（不带 `[information]` 标记）仍会被识别，方便旧笔记平滑迁移。
+
+## Python 脚本
+
+```bash
+python -m md_diagram_cards notes.md                    # 打印卡片
+python -m md_diagram_cards notes.md --mode newfile     # 生成 notes闪卡.md
+python -m md_diagram_cards notes.md --mode inplace     # 就地插入（幂等）
+python -m md_diagram_cards notes.md --mode inplace --dry-run
+python -m md_diagram_cards notes.md --mode inplace --report json
+```
+
+`inplace` 模式把卡片包在 `<!-- BEGIN GENERATED -->` / `<!-- END GENERATED -->`
+之间，插在各自 diagram 之后。重复执行结果一致。
+
+诊断信息走 stderr（几个结构、几张卡片、警告、提示）：
+
+```
+md-diagram-cards: 0 个结构 → 0 张卡片（只预览，未写入）
+提示: 没有找到任何 [d-state] / [d-tree] / [d-orthogonal] 结构。标记要写在标题开头…
+```
+
+`--report json` 额外往 stdout 吐一行 JSON 报告（插件靠它判断到底出了几张卡片）。
+
+开发时用 `PYTHONPATH=src`，或 `pip install -e .`。
+
+## Obsidian 插件（薄壳）
+
+`obsidian-plugin/` 是对着 Anki Heading Sync 的工程模式写的薄插件：
+扫描范围内文件 → 调用 Python 脚本 → 结果由脚本自己写盘。
+
+### 一键安装
+
+```bash
+./install.sh                          # 自动探测 vault
+./install.sh "/path/to/vault"         # 指定 vault
+MDC_PYTHON=python3.11 ./install.sh    # 指定解释器
+./install.sh --skip-build             # 跳过插件构建
+```
+
+脚本会做四件事：检查 Python 3.9+ → 构建插件（`main.js` 缺失时才构建）→
+复制 `main.js` + `manifest.json` + `styles.css` → 首次写入 `data.json`（已存在则不动）。
+
+装完在 Obsidian 里启用插件即可，命令面板会出现两条命令。
+
+> **macOS 提示**：如果 `mkdir` 报 `Operation not permitted`，是系统在保护 iCloud 目录。
+> 给终端开「完全磁盘访问权限」后重开终端，或者用 Finder 手动拷那三个文件
+> （`main.js` / `manifest.json` / `styles.css`）。
+
+### 手动安装
+
+```bash
+cd obsidian-plugin
+npm install && npm run build
+# 把 main.js + manifest.json + styles.css 拷进 <vault>/.obsidian/plugins/md-diagram-cards/
+```
+
+设置项：
+
+| 项 | 说明 |
+| --- | --- |
+| 范围模式 | 全部 / 只含指定文件夹 / 排除指定文件夹 |
+| 包含、排除的文件夹 | 搜索框里打字即从下拉列表筛选 vault 现有文件夹；选中后变成可删除的标签。留空 = 不限制 |
+| 输出模式 | 就地插入 / 生成 `xxx闪卡.md` |
+| 解释器路径 | 默认 `python3` |
+| 脚本路径 | 本仓库的 `src` 目录（留空则依赖已安装的包） |
+
+命令：`转换当前文件为卡片` / `转换整个库为卡片` / `查看转换日志`。
+
+| 项 | 说明 |
+| --- | --- |
+| 转换日志 | 每次转换往 `<插件目录>/convert.log` 追加一行 JSON（结构数、卡片数、警告、提示）。点「查看最近日志」直接看 |
+
+「提示成功但没产出卡片」先看这个日志：通常是文件里根本没有 `[d-*]` 标记，或者表格缺表头 / 第 1 列为空。
+
+## 回归测试
+
+```bash
+python3 tools/check_fixtures.py      # 卡片产出是否与 expected 一致
+python3 tools/check_idempotent.py    # inplace 模式是否幂等
+python3 tools/check_report.py        # 报告里的卡片数是否和 expected 对得上
+```
+
+```bash
+cd obsidian-plugin && npm test       # 运行范围 / 报告解析 / 插件↔Python 契约
+```
+
+`npm test` 里的契约用例会真跑一次 Python CLI，需要能执行 `python3`。

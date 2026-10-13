@@ -177,7 +177,7 @@ def format_link(link: Link, item: Item, ctx: dict) -> list[Card]:
     if link.category == "custom":
         values = lookup(ctx, item.name, link.value)
         if values is None:
-            warn(ctx, f"@custom({link.value}) 未在 ## Information 中解析到 (item: {item.name})", item.line)
+            warn(ctx, f"@custom({link.value}) 未在 Information 区（### [information]）中解析到 (item: {item.name})", item.line)
             return []
         return [make_card(f"[{link.value}] for [{item.name}]", as_list(values), item.line)]
 
@@ -191,7 +191,7 @@ def format_link(link: Link, item: Item, ctx: dict) -> list[Card]:
     else:
         values = lookup(ctx, item.name, link.category)
         if values is None:
-            warn(ctx, f"@{link.category} 未在 ## Information 中解析到 (item: {item.name})", item.line)
+            warn(ctx, f"@{link.category} 未在 Information 区（### [information]）中解析到 (item: {item.name})", item.line)
             return []
 
     values = as_list(values)

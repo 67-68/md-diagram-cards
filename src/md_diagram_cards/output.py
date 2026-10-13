@@ -19,6 +19,7 @@ import pathlib
 from .format import format_diagram
 from .parse import parse_document
 from .render import render_cards
+from .report import Conversion, DiagramSummary
 
 BEGIN_MARK = "<!-- BEGIN GENERATED -->"
 END_MARK = "<!-- END GENERATED -->"
@@ -61,15 +62,17 @@ def strip_generated(text: str) -> str:
     return "\n".join(kept)
 
 
-def render_inplace(text: str) -> tuple[str, list[dict]]:
+def convert_inplace(text: str) -> Conversion:
     """就地插入：每个 diagram 的卡片包在 BEGIN/END 里，插到该 diagram 之后。"""
     stripped = strip_generated(text)
     ctx = parse_document(stripped)
     lines = stripped.split("\n")
     insertions: list[tuple[int, list[str]]] = []
+    summaries: list[DiagramSummary] = []
 
     for diagram in ctx["diagrams"]:
         cards = format_diagram(diagram, ctx)
+        summaries.append(DiagramSummary(diagram.kind, diagram.title, diagram.line + 1, len(cards)))
         if not cards:
             continue
         body = render_cards(cards).rstrip("\n").split("\n")
@@ -83,16 +86,33 @@ def render_inplace(text: str) -> tuple[str, list[dict]]:
             index -= 1
         lines[index:index] = new_lines
 
-    return "\n".join(lines), ctx["warnings"]
+    return Conversion(text="\n".join(lines), warnings=ctx["warnings"], diagrams=summaries)
 
 
-def render_new_file(text: str) -> tuple[str, list[dict]]:
+def render_inplace(text: str) -> tuple[str, list[dict]]:
+    """`convert_inplace` 的旧签名（产物 + 警告）。"""
+    conversion = convert_inplace(text)
+    return conversion.text, conversion.warnings
+
+
+def convert_new_file(text: str) -> Conversion:
     """只输出卡片，不带任何维护标记。"""
     ctx = parse_document(text)
     cards = []
+    summaries: list[DiagramSummary] = []
+
     for diagram in ctx["diagrams"]:
-        cards.extend(format_diagram(diagram, ctx))
-    return render_cards(cards), ctx["warnings"]
+        produced = format_diagram(diagram, ctx)
+        summaries.append(DiagramSummary(diagram.kind, diagram.title, diagram.line + 1, len(produced)))
+        cards.extend(produced)
+
+    return Conversion(text=render_cards(cards), warnings=ctx["warnings"], diagrams=summaries)
+
+
+def render_new_file(text: str) -> tuple[str, list[dict]]:
+    """`convert_new_file` 的旧签名（产物 + 警告）。"""
+    conversion = convert_new_file(text)
+    return conversion.text, conversion.warnings
 
 
 def new_file_path(source: pathlib.Path) -> pathlib.Path:

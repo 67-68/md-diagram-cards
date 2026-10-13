@@ -22,7 +22,17 @@ export class ChildProcessPythonRunner implements PythonRunner {
 
   convertFile(absolutePath: string): Promise<PythonRunResult> {
     const settings = this.getSettings();
-    return this.run(["-m", "md_diagram_cards", absolutePath, "--mode", settings.outputMode]);
+    // --report json：让 Python 把"几个结构、几张卡片、警告、提示"打包成一行 JSON 回来，
+    // 否则"成功但 0 张卡片"这种事在外面完全看不出来。
+    return this.run([
+      "-m",
+      "md_diagram_cards",
+      absolutePath,
+      "--mode",
+      settings.outputMode,
+      "--report",
+      "json",
+    ]);
   }
 
   probe(): Promise<PythonRunResult> {

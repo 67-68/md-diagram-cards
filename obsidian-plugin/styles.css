@@ -1,0 +1,169 @@
+.md-diagram-cards-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: -4px 0 14px;
+}
+
+.md-diagram-cards-chips-empty {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
+.md-diagram-cards-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 2px 8px;
+  border-radius: var(--radius-s);
+  background-color: var(--background-modifier-hover);
+  font-size: var(--font-ui-smaller);
+}
+
+.md-diagram-cards-chip-label {
+  white-space: pre;
+}
+
+.md-diagram-cards-chip-remove {
+  border: none;
+  background: none;
+  box-shadow: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1;
+  padding: 0 2px;
+  height: auto;
+}
+
+.md-diagram-cards-chip-remove:hover {
+  color: var(--text-error);
+  background: none;
+}
+
+.md-diagram-cards-suggest-hint {
+  color: var(--text-faint);
+  margin-left: 6px;
+  font-size: var(--font-ui-smaller);
+}
+
+/* ---- 语法速查 ---- */
+.md-diagram-cards-guide {
+  margin-bottom: 18px;
+  padding: 4px 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+}
+
+.md-diagram-cards-guide > summary {
+  padding: 6px 0;
+  cursor: pointer;
+  font-weight: var(--font-medium);
+}
+
+.md-diagram-cards-guide-body {
+  padding-bottom: 8px;
+}
+
+.md-diagram-cards-guide-body h4 {
+  margin: 14px 0 6px;
+}
+
+.md-diagram-cards-guide-table {
+  width: 100%;
+  margin: 8px 0 4px;
+}
+
+.md-diagram-cards-guide-table th,
+.md-diagram-cards-guide-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.md-diagram-cards-guide-samples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.md-diagram-cards-guide-sample {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.md-diagram-cards-guide-sample-label {
+  margin-bottom: 4px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.md-diagram-cards-guide-sample pre {
+  margin: 0;
+}
+
+.md-diagram-cards-guide-sample code {
+  font-size: var(--font-ui-smaller);
+  white-space: pre;
+}
+
+.md-diagram-cards-guide-rules {
+  padding-left: 18px;
+}
+
+.md-diagram-cards-guide-rules li {
+  margin-bottom: 4px;
+}
+
+/* ---- 日志窗口 ---- */
+.md-diagram-cards-log-path {
+  margin-bottom: 10px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  word-break: break-all;
+}
+
+.md-diagram-cards-log-note {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.md-diagram-cards-log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.md-diagram-cards-log-row {
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.md-diagram-cards-log-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: var(--font-ui-smaller);
+}
+
+.md-diagram-cards-log-time {
+  color: var(--text-faint);
+}
+
+.md-diagram-cards-log-file {
+  color: var(--text-normal);
+  font-weight: var(--font-medium);
+}
+
+.md-diagram-cards-log-result {
+  color: var(--text-muted);
+}
+
+.md-diagram-cards-log-hint {
+  padding-left: 10px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}

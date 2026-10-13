@@ -16,6 +16,7 @@
 ```
 parse_document(text) -> Context
 ├─ parse_information(blocks)          → ctx["information"] = {项: {外链: 值}}
+│   └─ 收集「所有」### [information] 块，按顺序合并成同一个全局字典
 ├─ parse_diagrams(blocks)
 │   └─ 对每个 [d-*] 标题，按标记分派:
 │       │
