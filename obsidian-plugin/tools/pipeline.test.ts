@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { parseConversionReport } from "@/application/model/ConversionReport";
+import { parseCategoryTable } from "@/application/model/CategoryTable";
 
 const PLUGIN_DIR = process.cwd();
 const REPO_DIR = path.resolve(PLUGIN_DIR, "..");
@@ -119,6 +120,42 @@ if (!available()) {
   const warned = parseConversionReport(run(warnSource, "inplace").stdout);
 
   check("警告进了报告", (warned?.warnings.length ?? 0) > 0, true);
+
+  // 5) 内置 category 表：插件设置页靠它展示
+  const builtin = parseCategoryTable(
+    execFileSync("python3", ["-m", "md_diagram_cards", "--list-categories"], {
+      env: { ...process.env, PYTHONPATH: SRC_DIR },
+      encoding: "utf8",
+    }),
+  );
+
+  check("内置表能解析", builtin !== null, true);
+  check("内置表含 ability", builtin?.["ability"], "{key}'s ability is?");
+  check("内置表含 position", builtin?.["position"], "{key}'s position is?");
+  check("内置表含 name", builtin?.["name"], "{key}'s name is?");
+
+  // 6) 自定义 category 覆盖内置：--categories-json 真的改变了输出
+  const customFile = path.join(work, "custom.md");
+  writeFileSync(
+    customFile,
+    "### [d-tree] demo\n\n- King @effect: 赢了\n",
+    "utf8",
+  );
+  const customOut = execFileSync(
+    "python3",
+    [
+      "-m",
+      "md_diagram_cards",
+      customFile,
+      "--mode",
+      "stdout",
+      "--categories-json",
+      JSON.stringify({ effect: "{key} SAYS {value}" }),
+    ],
+    { env: { ...process.env, PYTHONPATH: SRC_DIR }, encoding: "utf8" },
+  );
+
+  check("覆盖后的模板生效", customOut.includes("King SAYS 赢了"), true);
 }
 
 if (failed > 0) {

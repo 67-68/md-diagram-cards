@@ -17,6 +17,7 @@ import json
 import pathlib
 import sys
 
+from .format import CATEGORY_TEMPLATES
 from .output import convert_inplace, convert_new_file, new_file_path
 from .render import render_warnings
 from .report import Conversion
@@ -27,7 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="md_diagram_cards",
         description="把 md 里的 [d-state] / [d-tree] / [d-orthogonal] 结构转成卡片",
     )
-    parser.add_argument("input", help="输入 md 文件")
+    parser.add_argument("input", nargs="?", help="输入 md 文件")
     parser.add_argument(
         "--mode",
         choices=["stdout", "newfile", "inplace"],
@@ -43,7 +44,51 @@ def build_parser() -> argparse.ArgumentParser:
         help="转完后往 stdout 吐一行 JSON 报告（需要配合 newfile / inplace 模式）",
     )
     parser.add_argument("--quiet", action="store_true", help="不出诊断信息")
+    parser.add_argument(
+        "--categories-json",
+        help='自定义 category 模板的 JSON（按 key 覆盖内置），例如 {"effect":"{key} 的影响是？"}',
+    )
+    parser.add_argument(
+        "--list-categories",
+        action="store_true",
+        help="打印内置 category 表（JSON）后退出，不需要 input",
+    )
     return parser
+
+
+def parse_categories(raw: str | None) -> dict[str, str]:
+    """把 `--categories-json` 解析成 {key: template}；坏输入直接报错退出。"""
+    if not raw:
+        return {}
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as error:
+        print(f"--categories-json 不是合法 JSON：{error}", file=sys.stderr)
+        raise SystemExit(2)
+
+    if not isinstance(parsed, dict):
+        print("--categories-json 必须是对象，例如 {\"effect\": \"...\"}", file=sys.stderr)
+        raise SystemExit(2)
+
+    categories: dict[str, str] = {}
+    for key, template in parsed.items():
+        if not isinstance(key, str) or not key.strip():
+            print(f"--categories-json 里有非法的 category 名：{key!r}", file=sys.stderr)
+            raise SystemExit(2)
+        if not isinstance(template, str) or not template.strip():
+            print(f"--categories-json 里 {key!r} 的模板必须是字符串", file=sys.stderr)
+            raise SystemExit(2)
+        categories[key.strip()] = template
+
+    return categories
+
+
+def list_categories() -> int:
+    """`--list-categories`：把内置表原样吐成一行 JSON 给插件展示。"""
+    json.dump(CATEGORY_TEMPLATES, sys.stdout, ensure_ascii=False, sort_keys=True)
+    sys.stdout.write("\n")
+    return 0
 
 
 def emit_report(args: argparse.Namespace, conversion: Conversion, target: pathlib.Path | None, written: bool) -> None:
@@ -81,9 +126,18 @@ def emit_report(args: argparse.Namespace, conversion: Conversion, target: pathli
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
+    if args.list_categories:
+        return list_categories()
+
     if args.report and (args.mode == "stdout" or args.dry_run):
         print("--report json 不能和 --mode stdout / --dry-run 一起用", file=sys.stderr)
         return 2
+
+    if not args.input:
+        print("需要一个输入 md 文件（或 --list-categories）", file=sys.stderr)
+        return 2
+
+    categories = parse_categories(args.categories_json)
 
     source = pathlib.Path(args.input)
     if not source.is_file():
@@ -93,13 +147,13 @@ def main(argv: list[str] | None = None) -> int:
     text = source.read_text(encoding="utf-8")
 
     if args.mode == "inplace":
-        conversion = convert_inplace(text)
+        conversion = convert_inplace(text, categories=categories)
         target = source
     elif args.mode == "newfile":
-        conversion = convert_new_file(text)
+        conversion = convert_new_file(text, categories=categories)
         target = new_file_path(source)
     else:
-        conversion = convert_new_file(text)
+        conversion = convert_new_file(text, categories=categories)
         target = pathlib.Path(args.out) if args.out else None
 
     output = conversion.text

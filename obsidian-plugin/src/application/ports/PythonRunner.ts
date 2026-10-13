@@ -10,4 +10,6 @@ export interface PythonRunner {
   convertFile(absolutePath: string): Promise<PythonRunResult>;
   /** 解释器与脚本能否跑起来。 */
   probe(): Promise<PythonRunResult>;
+  /** 拉取 Python 内置的 category 表（JSON），给设置页展示。 */
+  listCategories(): Promise<PythonRunResult>;
 }

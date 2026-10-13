@@ -1,6 +1,7 @@
 # Diagram 卡片系统 — Spec
 
-> 状态：草案 v0.10
+> 状态：草案 v0.11
+> v0.11 变更：Category 表新增 `ability` / `position` / `name`（v0.8 删掉的 ability 以显式模板回归）；`{key}` / `{value}` 占位符正式化；支持在插件设置页自定义 category（按 key 覆盖内置），模板非法占位符 → 警告。
 > v0.10 变更：Information 块新增专属标记 `### [information]`；文档里所有 Information 块会**合并**成一个全局字典；旧的纯 `## Information` 标题仍兼容。
 > v0.9 变更：`[d-tree]` 确认为**嵌套**无序列表，产「父问子」卡片。
 > v0.8 变更：修正 `[d-state]` 与 `[d-tree]` 的关系（时间线=状态机，树状图是另一类）；表格确认为标准单行 CommonMark（行尾 `|` 必须），删除跨行单元格规则；删除 `ability` category；警告仅提示。
@@ -219,16 +220,30 @@ TEST<br><br><br>LINE4
 
 > `@[KEY]` 与 `@time: [KEY]` **不是合法语法**，不实现。
 
-### Category 表（预定义，简单 K-V）
+### Category 表（预定义 K-V）
 
-**只收录例子中出现过的 category。** 未收录的 `@cat` 一律警告。
+模板里 `{key}` 替换成**项名**，`{value}` 替换成**外链的值**。
+未收录的 `@cat` 一律警告。
 
 | category | 问题模板 |
 | --- | --- |
 | `condition` | `{key}'s condition is?` |
-| `member_amount` | `Member count of {key}` |
-| `place` | `{key}的地点是 {value}` |
+| `member_amount` | `Member count of [{key}]` |
+| `place` | `[{key}]的地点是 {value}` |
 | `effect` | `{key}'s effect is?` |
+| `ability` | `{key}'s ability is?` |
+| `position` | `{key}'s position is?` |
+| `name` | `{key}'s name is?` |
+
+### 6.1 自定义 category
+
+Category 表可在**插件设置页**里自定义：按 key **覆盖**内置项，或新增自己的。
+自定义表每次转换通过 `--categories-json` 传给 Python，Python 按
+`{**内置, **自定义}` 合并（后者覆盖前者）。
+
+- 模板里只认 `{key}` / `{value}` 两个占位符；写了别的（如 `{foo}`）→ **警告 + 跳过该卡**
+- 命令行同理：`python -m md_diagram_cards notes.md --categories-json '{"effect":"{key} 的影响是？"}'`
+- 插件可用 `--list-categories` 拉取内置表（设置页只读展示用，事实源始终在 Python）
 
 ---
 

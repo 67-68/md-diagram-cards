@@ -7,13 +7,32 @@ from __future__ import annotations
 
 from .model import Card, Diagram, Item, Link
 
-# Category → 问题模板（预定义 K-V，只收录例子里出现过的）
+# Category → 问题模板。模板里用 `{key}` 表示项名，`{value}` 表示外链的值。
 CATEGORY_TEMPLATES: dict[str, str] = {
     "condition": "{key}'s condition is?",
     "member_amount": "Member count of [{key}]",
     "place": "[{key}]的地点是 {value}",
     "effect": "{key}'s effect is?",
+    "ability": "{key}'s ability is?",
+    "position": "{key}'s position is?",
+    "name": "{key}'s name is?",
 }
+
+#: 模板里允许出现的占位符。
+CATEGORY_PLACEHOLDERS = ("key", "value")
+
+
+def merge_categories(custom: dict[str, str] | None = None) -> dict[str, str]:
+    """内置表 + 自定义表。自定义按 key **覆盖**内置（方便改写措辞）。"""
+    return {**CATEGORY_TEMPLATES, **(custom or {})}
+
+
+def category_template(ctx: dict, name: str) -> str | None:
+    """取某个 category 的问题模板；优先用 ctx 里合并好的表。"""
+    templates = ctx.get("categories")
+    if not isinstance(templates, dict):
+        templates = CATEGORY_TEMPLATES
+    return templates.get(name)
 
 
 # ---------------------------------------------------------------- 总出口
@@ -47,7 +66,11 @@ def lookup(ctx: dict, item_name: str, key: str):
 
 # ---------------------------------------------------------------- 分派
 
-def format_document(ctx: dict) -> list[Card]:
+def format_document(ctx: dict, categories: dict[str, str] | None = None) -> list[Card]:
+    # 合并好的 category 表写进 context，format_link 直接从 ctx 取。
+    if categories is not None or not isinstance(ctx.get("categories"), dict):
+        ctx["categories"] = merge_categories(categories)
+
     cards: list[Card] = []
     for diagram in ctx["diagrams"]:
         cards.extend(format_diagram(diagram, ctx))
@@ -181,7 +204,7 @@ def format_link(link: Link, item: Item, ctx: dict) -> list[Card]:
             return []
         return [make_card(f"[{link.value}] for [{item.name}]", as_list(values), item.line)]
 
-    template = CATEGORY_TEMPLATES.get(link.category)
+    template = category_template(ctx, link.category)
     if template is None:
         warn(ctx, f"未知 category @{link.category} (item: {item.name})", item.line)
         return []
@@ -195,5 +218,16 @@ def format_link(link: Link, item: Item, ctx: dict) -> list[Card]:
             return []
 
     values = as_list(values)
-    question = template.format(key=item.name, value=values[0] if values else "")
+
+    try:
+        question = template.format(key=item.name, value=values[0] if values else "")
+    except (KeyError, IndexError, ValueError) as error:
+        allowed = " / ".join("{" + name + "}" for name in CATEGORY_PLACEHOLDERS)
+        warn(
+            ctx,
+            f"category @{link.category} 的模板占位符有误（只支持 {allowed}）：{template!r} ({error})",
+            item.line,
+        )
+        return []
+
     return [make_card(question, values, item.line)]

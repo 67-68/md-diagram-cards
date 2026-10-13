@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pathlib
 
-from .format import format_diagram
+from .format import format_diagram, merge_categories
 from .parse import parse_document
 from .render import render_cards
 from .report import Conversion, DiagramSummary
@@ -62,10 +62,11 @@ def strip_generated(text: str) -> str:
     return "\n".join(kept)
 
 
-def convert_inplace(text: str) -> Conversion:
+def convert_inplace(text: str, categories: dict[str, str] | None = None) -> Conversion:
     """就地插入：每个 diagram 的卡片包在 BEGIN/END 里，插到该 diagram 之后。"""
     stripped = strip_generated(text)
     ctx = parse_document(stripped)
+    ctx["categories"] = merge_categories(categories)
     lines = stripped.split("\n")
     insertions: list[tuple[int, list[str]]] = []
     summaries: list[DiagramSummary] = []
@@ -89,15 +90,16 @@ def convert_inplace(text: str) -> Conversion:
     return Conversion(text="\n".join(lines), warnings=ctx["warnings"], diagrams=summaries)
 
 
-def render_inplace(text: str) -> tuple[str, list[dict]]:
+def render_inplace(text: str, categories: dict[str, str] | None = None) -> tuple[str, list[dict]]:
     """`convert_inplace` 的旧签名（产物 + 警告）。"""
-    conversion = convert_inplace(text)
+    conversion = convert_inplace(text, categories=categories)
     return conversion.text, conversion.warnings
 
 
-def convert_new_file(text: str) -> Conversion:
+def convert_new_file(text: str, categories: dict[str, str] | None = None) -> Conversion:
     """只输出卡片，不带任何维护标记。"""
     ctx = parse_document(text)
+    ctx["categories"] = merge_categories(categories)
     cards = []
     summaries: list[DiagramSummary] = []
 
@@ -109,9 +111,9 @@ def convert_new_file(text: str) -> Conversion:
     return Conversion(text=render_cards(cards), warnings=ctx["warnings"], diagrams=summaries)
 
 
-def render_new_file(text: str) -> tuple[str, list[dict]]:
+def render_new_file(text: str, categories: dict[str, str] | None = None) -> tuple[str, list[dict]]:
     """`convert_new_file` 的旧签名（产物 + 警告）。"""
-    conversion = convert_new_file(text)
+    conversion = convert_new_file(text, categories=categories)
     return conversion.text, conversion.warnings
 
 

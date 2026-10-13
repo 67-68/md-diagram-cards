@@ -1,6 +1,14 @@
 export type ScopeMode = "all" | "include" | "exclude";
 export type OutputMode = "inplace" | "newfile";
 
+/** 一条自定义 category 规则：`@key` / `@key: value` 的问题模板。 */
+export interface CategoryRule {
+  /** category 名，例如 `ability`。 */
+  key: string;
+  /** 问题模板，用 `{key}` 表示项名、`{value}` 表示外链值。 */
+  template: string;
+}
+
 export interface PluginSettings {
   scopeMode: ScopeMode;
   includeFolders: string[];
@@ -9,6 +17,8 @@ export interface PluginSettings {
   pythonPath: string;
   scriptPath: string;
   timeoutSeconds: number;
+  /** 用户自定义的 category 模板，按 key 覆盖 Python 内置表。 */
+  categories: CategoryRule[];
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
@@ -19,6 +29,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   pythonPath: "python3",
   scriptPath: "",
   timeoutSeconds: 120,
+  categories: [],
 };
 
 /**
@@ -61,6 +72,54 @@ function normalizeFolderList(value: unknown): string[] {
   return result;
 }
 
+/** 清洗自定义 category 列表：去空白、丢空行、按 key 去重（后者覆盖前者）。 */
+export function normalizeCategories(value: unknown): CategoryRule[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const result: CategoryRule[] = [];
+  const indexByKey = new Map<string, number>();
+
+  for (const item of value) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+
+    const candidate = item as Partial<CategoryRule>;
+    const key = typeof candidate.key === "string" ? candidate.key.trim() : "";
+    const template = typeof candidate.template === "string" ? candidate.template.trim() : "";
+
+    if (!key || !template) {
+      continue;
+    }
+
+    const lookup = key.toLowerCase();
+    const existing = indexByKey.get(lookup);
+
+    if (existing !== undefined) {
+      result[existing] = { key, template };
+      continue;
+    }
+
+    indexByKey.set(lookup, result.length);
+    result.push({ key, template });
+  }
+
+  return result;
+}
+
+/** 把自定义 category 列表转成 Python `--categories-json` 需要的 `{key: template}`。 */
+export function categoryRecord(categories: CategoryRule[]): Record<string, string> {
+  const record: Record<string, string> = {};
+
+  for (const { key, template } of normalizeCategories(categories)) {
+    record[key] = template;
+  }
+
+  return record;
+}
+
 export function normalizePluginSettings(settings: Partial<PluginSettings> | null | undefined): PluginSettings {
   const merged = { ...DEFAULT_SETTINGS, ...(settings ?? {}) };
 
@@ -75,6 +134,7 @@ export function normalizePluginSettings(settings: Partial<PluginSettings> | null
       Number.isFinite(merged.timeoutSeconds) && merged.timeoutSeconds > 0
         ? Math.floor(merged.timeoutSeconds)
         : DEFAULT_SETTINGS.timeoutSeconds,
+    categories: normalizeCategories(merged.categories),
   };
 }
 

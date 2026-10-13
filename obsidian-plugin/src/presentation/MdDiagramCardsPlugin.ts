@@ -3,6 +3,7 @@ import path from "node:path";
 import { Plugin } from "obsidian";
 
 import { DEFAULT_SETTINGS, normalizePluginSettings, type PluginSettings } from "@/application/config/PluginSettings";
+import { parseCategoryTable, type CategoryTable } from "@/application/model/CategoryTable";
 import {
   ConvertService,
   CurrentFileOutOfScopeError,
@@ -19,6 +20,11 @@ import { MdDiagramCardsSettingTab } from "@/presentation/settings/PluginSettingT
 
 export default class MdDiagramCardsPlugin extends Plugin {
   settings: PluginSettings = DEFAULT_SETTINGS;
+
+  /** Python 内置 category 表（设置页展示用）；null = 还没加载 / 加载失败。 */
+  builtinCategories: CategoryTable | null = null;
+  /** 内置表加载失败的原因，给设置页显示。 */
+  builtinCategoriesError = "";
 
   private readonly noticeService = new NoticeService();
   private settingsRepository?: DataJsonSettingsRepository;
@@ -72,6 +78,39 @@ export default class MdDiagramCardsPlugin extends Plugin {
       console.error("读取文件夹列表失败。", error);
       return [];
     }
+  }
+
+  /**
+   * 拉取 Python 内置 category 表（设置页只读展示）。
+   * 事实源在 Python，插件不缓存到 data.json；force=true 用于手动重试。
+   */
+  async loadBuiltinCategories(force = false): Promise<boolean> {
+    if (this.builtinCategories && !force) {
+      return true;
+    }
+
+    if (!this.pythonRunner) {
+      this.builtinCategoriesError = "Python 运行器未初始化。";
+      return false;
+    }
+
+    const result = await this.pythonRunner.listCategories();
+
+    if (!result.ok) {
+      this.builtinCategoriesError = result.stderr.trim() || `Python 退出码 ${result.code}`;
+      return false;
+    }
+
+    const parsed = parseCategoryTable(result.stdout);
+
+    if (!parsed) {
+      this.builtinCategoriesError = "无法解析 Python 返回的 category 表。";
+      return false;
+    }
+
+    this.builtinCategories = parsed;
+    this.builtinCategoriesError = "";
+    return true;
   }
 
   // ------------------------------------------------------------ 日志

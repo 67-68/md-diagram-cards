@@ -1,6 +1,6 @@
 import { PluginSettingTab, Setting } from "obsidian";
 
-import type { OutputMode, PluginSettings, ScopeMode } from "@/application/config/PluginSettings";
+import type { CategoryRule, OutputMode, PluginSettings, ScopeMode } from "@/application/config/PluginSettings";
 import type MdDiagramCardsPlugin from "@/presentation/MdDiagramCardsPlugin";
 import { FolderSuggest } from "@/presentation/settings/FolderSuggest";
 
@@ -134,7 +134,8 @@ const RULE_LINES: string[] = [
   "Information 区：用 ### [information] 声明（层级不限）。一份文档可以写多个，会自动合并成一个全局字典 —— 同名项的不同外链取并集，同名外链后者覆盖前者。",
   "Information 写法：- 项 是父节点；- 外链: 值 是单值；- 外链: 后接缩进列表是列表值。空 bullet 会被忽略。",
   "指针：值从 Information 区里取。合法的只有 @cat、@cat: value、@custom(KEY) 三种；@[KEY] 和 @time: [KEY] 不是合法写法。",
-  "内置 category 只有 condition / member_amount / place / effect 四个。写别的（如 @ability）会变成警告，要用 @custom(ability) 这种形式去引用 Information 里的自定义外链。",
+  "内置 category：condition / member_amount / place / effect / ability / position / name，模板里 {key} = 项名、{value} = 外链值；写别的会变成警告，要用 @custom(KEY) 或到设置里自定义。",
+  "Category 模板可在下方「Category 问题模板」里按 key 覆盖或新增；改动自动保存，下次转换生效。",
   "就地输出：卡片包在 <!-- BEGIN GENERATED --> 与 <!-- END GENERATED --> 之间，重复运行结果一致（幂等），改格式不会碰你手写的内容。",
   "没有 [d-state] / [d-tree] / [d-orthogonal] 标记的标题不出卡 —— 这是「提示成功但没有卡片」最常见的原因。",
 ];
@@ -200,6 +201,8 @@ export class MdDiagramCardsSettingTab extends PluginSettingTab {
           }),
       );
 
+    this.renderCategorySection(containerEl);
+
     new Setting(containerEl).setName("Python").setHeading();
 
     new Setting(containerEl)
@@ -252,6 +255,157 @@ export class MdDiagramCardsSettingTab extends PluginSettingTab {
       );
 
     this.renderLogSection(containerEl);
+  }
+
+  // ------------------------------------------------------------ Category 问题模板
+
+  private renderCategorySection(containerEl: HTMLElement): void {
+    new Setting(containerEl)
+      .setName("Category 问题模板")
+      .setDesc(
+        "外链 @cat 的取值来自 Information 区，问题文本由这里的模板生成。" +
+          "模板里 {key} = 项名，{value} = 外链值。改动会自动保存（无需手动保存按钮），" +
+          "每次转换时随参数传给 Python。",
+      );
+
+    this.renderBuiltinCategories(containerEl);
+    this.renderCustomCategories(containerEl);
+  }
+
+  /** 内置 category 只读展示。事实源在 Python，通过 `--list-categories` 异步拉取。 */
+  private renderBuiltinCategories(parentEl: HTMLElement): void {
+    parentEl.createEl("h4", { text: "内置 category（来自 Python，只读）" });
+
+    const table = this.plugin.builtinCategories;
+
+    if (table) {
+      const tableEl = parentEl.createEl("table", { cls: "md-diagram-cards-guide-table md-diagram-cards-category-table" });
+      const headRowEl = tableEl.createEl("thead").createEl("tr");
+      headRowEl.createEl("th", { text: "category" });
+      headRowEl.createEl("th", { text: "问题模板" });
+
+      const bodyEl = tableEl.createEl("tbody");
+
+      for (const [key, template] of Object.entries(table)) {
+        const rowEl = bodyEl.createEl("tr");
+        rowEl.createEl("td").createEl("code", { text: key });
+        rowEl.createEl("td").createEl("code", { text: template });
+      }
+
+      return;
+    }
+
+    if (!this.plugin.builtinCategoriesError) {
+      parentEl.createDiv({ cls: "md-diagram-cards-category-status", text: "正在从 Python 读取内置 category…" });
+      void this.loadBuiltinCategories();
+      return;
+    }
+
+    const statusEl = parentEl.createDiv({ cls: "md-diagram-cards-category-status" });
+    statusEl.createSpan({ text: `读取失败：${this.plugin.builtinCategoriesError}` });
+    statusEl.createEl("button", { text: "重试" }).onclick = () => {
+      void this.loadBuiltinCategories(true);
+    };
+  }
+
+  private async loadBuiltinCategories(force = false): Promise<void> {
+    await this.plugin.loadBuiltinCategories(force);
+    this.display();
+  }
+
+  /** 自定义 category：可增删改，按 key 覆盖内置。 */
+  private renderCustomCategories(parentEl: HTMLElement): void {
+    parentEl.createEl("h4", { text: "自定义 category（覆盖同名的内置项）" });
+
+    const categories = this.plugin.settings.categories;
+    const listEl = parentEl.createDiv({ cls: "md-diagram-cards-category-list" });
+
+    if (categories.length === 0) {
+      listEl.createDiv({ cls: "md-diagram-cards-category-empty", text: "还没有自定义 category。" });
+    }
+
+    categories.forEach((rule, index) => {
+      const rowEl = listEl.createDiv({ cls: "md-diagram-cards-category-row" });
+
+      const keyInput = rowEl.createEl("input", {
+        type: "text",
+        cls: "md-diagram-cards-category-key",
+        attr: { "aria-label": "category 名", placeholder: "category 名，如 ability" },
+      });
+      keyInput.value = rule.key;
+      keyInput.addEventListener("input", () => this.editCategory(index, "key", keyInput.value));
+
+      const templateInput = rowEl.createEl("input", {
+        type: "text",
+        cls: "md-diagram-cards-category-template",
+        attr: { "aria-label": "问题模板", placeholder: "问题模板，如 {key}'s ability is?" },
+      });
+      templateInput.value = rule.template;
+      templateInput.addEventListener("input", () => this.editCategory(index, "template", templateInput.value));
+
+      const removeEl = rowEl.createEl("button", {
+        cls: "md-diagram-cards-category-remove",
+        text: "✕",
+        attr: { "aria-label": `删除 ${rule.key || "这一条"}` },
+      });
+      removeEl.onclick = () => this.removeCategory(index);
+    });
+
+    const actionsEl = parentEl.createDiv({ cls: "md-diagram-cards-category-actions" });
+    actionsEl.createEl("button", { text: "添加一条" }).onclick = () => this.addCategory();
+
+    if (categories.length > 0) {
+      const resetEl = actionsEl.createEl("button", { text: "清空自定义" });
+      resetEl.onclick = () => this.resetCategories();
+    }
+  }
+
+  private editCategory(index: number, field: "key" | "template", value: string): void {
+    const next = this.plugin.settings.categories.map((rule, i) =>
+      i === index ? { ...rule, [field]: value } : rule,
+    );
+    this.scheduleCategorySave(next);
+  }
+
+  private addCategory(): void {
+    // 空行先只在内存里，等真的填了 key/template 才会被存下来（归一化会丢空行）。
+    this.plugin.settings = {
+      ...this.plugin.settings,
+      categories: [...this.plugin.settings.categories, { key: "", template: "" }],
+    };
+    this.display();
+  }
+
+  private removeCategory(index: number): void {
+    const next = this.plugin.settings.categories.filter((_, i) => i !== index);
+    this.plugin.settings = { ...this.plugin.settings, categories: next };
+    this.display();
+    void this.plugin.updateSettings({ categories: next });
+  }
+
+  private resetCategories(): void {
+    this.plugin.settings = { ...this.plugin.settings, categories: [] };
+    this.display();
+    void this.plugin.updateSettings({ categories: [] });
+  }
+
+  /**
+   * 自动保存（防抖）。输入时先更新内存，保证紧接着的转换能读到；
+   * 停手 400ms 再写 data.json，避免每敲一个字都落盘。
+   */
+  private categorySaveTimer?: number;
+
+  private scheduleCategorySave(categories: CategoryRule[]): void {
+    this.plugin.settings = { ...this.plugin.settings, categories };
+
+    if (this.categorySaveTimer !== undefined) {
+      window.clearTimeout(this.categorySaveTimer);
+    }
+
+    this.categorySaveTimer = window.setTimeout(() => {
+      this.categorySaveTimer = undefined;
+      void this.plugin.updateSettings({ categories });
+    }, 400);
   }
 
   // ------------------------------------------------------------ 语法速查

@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import path from "node:path";
 
-import type { PluginSettings } from "@/application/config/PluginSettings";
+import { categoryRecord, type PluginSettings } from "@/application/config/PluginSettings";
 import type { PythonRunResult, PythonRunner } from "@/application/ports/PythonRunner";
 
 const MAX_BUFFER = 10 * 1024 * 1024;
@@ -24,7 +24,7 @@ export class ChildProcessPythonRunner implements PythonRunner {
     const settings = this.getSettings();
     // --report json：让 Python 把"几个结构、几张卡片、警告、提示"打包成一行 JSON 回来，
     // 否则"成功但 0 张卡片"这种事在外面完全看不出来。
-    return this.run([
+    const args = [
       "-m",
       "md_diagram_cards",
       absolutePath,
@@ -32,11 +32,24 @@ export class ChildProcessPythonRunner implements PythonRunner {
       settings.outputMode,
       "--report",
       "json",
-    ]);
+    ];
+
+    // 自定义 category 每次转换都随参数传给 Python；Python 无状态，不需要"存回去"。
+    const categories = categoryRecord(settings.categories);
+
+    if (Object.keys(categories).length > 0) {
+      args.push("--categories-json", JSON.stringify(categories));
+    }
+
+    return this.run(args);
   }
 
   probe(): Promise<PythonRunResult> {
     return this.run(["-m", "md_diagram_cards", "--help"]);
+  }
+
+  listCategories(): Promise<PythonRunResult> {
+    return this.run(["-m", "md_diagram_cards", "--list-categories"]);
   }
 
   private run(args: string[]): Promise<PythonRunResult> {

@@ -50,12 +50,34 @@
 
 - `- 项` 是父节点；`- 外链: 值` 是单值；`- 外链:` + 缩进列表是多值
 - 引用只有三种合法写法：
-  - `@condition` / `@member_amount` / `@place` / `@effect` —— 内置 category
-  - `@condition: value` —— 内联值
+  - `@cat` —— 用内置 category（`condition` / `member_amount` / `place` / `effect` / `ability` / `position` / `name`）
+  - `@cat: value` —— 内联值
   - `@custom(KEY)` —— 引用 Information 里的任意外链，例如 `@custom(Nap 3 want)`
-- `@ability` 这种裸写法不是内置 category，会变成警告；要写 `@custom(ability)`
 
 > 旧的纯 `## Information` 标题（不带 `[information]` 标记）仍会被识别，方便旧笔记平滑迁移。
+
+### Category 问题模板（可自定义）
+
+每个 category 对应一条问题模板，模板里 `{key}` = 项名、`{value}` = 外链值：
+
+| category | 问题模板 |
+| --- | --- |
+| `condition` | `{key}'s condition is?` |
+| `member_amount` | `Member count of [{key}]` |
+| `place` | `[{key}]的地点是 {value}` |
+| `effect` | `{key}'s effect is?` |
+| `ability` | `{key}'s ability is?` |
+| `position` | `{key}'s position is?` |
+| `name` | `{key}'s name is?` |
+
+插件设置页里可以**按 key 覆盖**内置模板、或新增自定义 category；改动存在 Obsidian 的
+`data.json`，每次转换时作为 `--categories-json` 传给 Python（Python 无状态，不存在"存回 Python"）。
+命令行同理：
+
+```bash
+python -m md_diagram_cards notes.md --categories-json '{"effect":"{key} 的影响是？"}'
+python -m md_diagram_cards --list-categories    # 打印内置 category 表（JSON）
+```
 
 ## Python 脚本
 
@@ -119,6 +141,7 @@ npm install && npm run build
 | 范围模式 | 全部 / 只含指定文件夹 / 排除指定文件夹 |
 | 包含、排除的文件夹 | 搜索框里打字即从下拉列表筛选 vault 现有文件夹；选中后变成可删除的标签。留空 = 不限制 |
 | 输出模式 | 就地插入 / 生成 `xxx闪卡.md` |
+| Category 问题模板 | 只读展示 Python 内置 category；可增删改自定义 category（按 key 覆盖内置），改动自动保存 |
 | 解释器路径 | 默认 `python3` |
 | 脚本路径 | 本仓库的 `src` 目录（留空则依赖已安装的包） |
 

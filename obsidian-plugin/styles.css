@@ -167,3 +167,76 @@
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
 }
+
+/* ---- Category 问题模板 ---- */
+.md-diagram-cards-category-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.md-diagram-cards-category-status button {
+  height: auto;
+  padding: 2px 8px;
+  font-size: var(--font-ui-smaller);
+}
+
+.md-diagram-cards-category-table {
+  margin-bottom: 10px;
+}
+
+.md-diagram-cards-category-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.md-diagram-cards-category-empty {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
+.md-diagram-cards-category-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.md-diagram-cards-category-row input {
+  height: var(--input-height);
+}
+
+.md-diagram-cards-category-key {
+  flex: 0 0 160px;
+}
+
+.md-diagram-cards-category-template {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.md-diagram-cards-category-remove {
+  flex: 0 0 auto;
+  border: none;
+  background: none;
+  box-shadow: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  height: auto;
+  padding: 0 6px;
+}
+
+.md-diagram-cards-category-remove:hover {
+  color: var(--text-error);
+  background: none;
+}
+
+.md-diagram-cards-category-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}

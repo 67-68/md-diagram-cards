@@ -2,7 +2,14 @@
 //
 // 起因：install.sh 早期版本给新装用户写的是 scopeMode=include + includeFolders=[]，
 // 于是任何文件都会被判成"不在范围内"。这些用例把当时的坑钉死。
-import { DEFAULT_SETTINGS, isInScope, normalizePluginSettings, normalizeVaultPath } from "@/application/config/PluginSettings";
+import {
+  categoryRecord,
+  DEFAULT_SETTINGS,
+  isInScope,
+  normalizeCategories,
+  normalizePluginSettings,
+  normalizeVaultPath,
+} from "@/application/config/PluginSettings";
 
 let failed = 0;
 
@@ -41,6 +48,36 @@ console.log("设置归一化");
 check("去重 + 去斜杠", normalizePluginSettings({ includeFolders: ["笔记", "笔记/", "/笔记"] }).includeFolders, ["笔记"]);
 check("normalizeVaultPath", normalizeVaultPath("  ./a//b//  "), "a/b");
 check("坏值回落到默认", normalizePluginSettings({ scopeMode: "nope" as never, timeoutSeconds: -1 }).timeoutSeconds, DEFAULT_SETTINGS.timeoutSeconds);
+
+console.log("Category 归一化");
+
+check(
+  "去空白 + 丢空行",
+  normalizeCategories([
+    { key: " ability ", template: " {key} x " },
+    { key: "", template: "no key" },
+    { key: "motto", template: "" },
+    "nonsense",
+  ] as never),
+  [{ key: "ability", template: "{key} x" }],
+);
+check(
+  "同名（忽略大小写）后者覆盖",
+  normalizeCategories([
+    { key: "ability", template: "first" },
+    { key: "Ability", template: "second" },
+  ]),
+  [{ key: "Ability", template: "second" }],
+);
+check("默认空列表", normalizePluginSettings(DEFAULT_SETTINGS).categories, []);
+check(
+  "列表转 Python 用的 record",
+  categoryRecord([
+    { key: "ability", template: "a" },
+    { key: "motto", template: "m" },
+  ]),
+  { ability: "a", motto: "m" },
+);
 
 if (failed > 0) {
   console.log(`\n失败 ${failed} 项`);

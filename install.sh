@@ -189,7 +189,8 @@ if [ ! -f "$DATA_JSON" ]; then
     "outputMode": "inplace",
     "pythonPath": "$MDC_PYTHON",
     "scriptPath": "$HERE/src",
-    "timeoutSeconds": 120
+    "timeoutSeconds": 120,
+    "categories": []
   }
 }
 JSON
