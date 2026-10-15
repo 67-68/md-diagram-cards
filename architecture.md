@@ -124,23 +124,54 @@ def make_card(question, answers):
 <!-- END GENERATED -->
 ```
 
-**幂等的实现**：每次生成前先 `strip_generated` 剥掉所有受管理区块
-**以及它前后由我们引入的空行**，然后重新插入。
+**外科手术式更新**：每次生成前先扫描旧区块，再按 diagram 逐个比较。
+没变化的 diagram 整块保留；变化的 diagram 只替换发生变化的卡片块。
+卡片末尾已有的 `<!--ID: noteId-->`（以及旧版 AHS marker）会跟着卡片保留，
+因此 Anki Heading Sync 下一次 sync 能按 noteId 增量更新，而不是新建重复卡。
 
-清掉前后空行是关键 —— 只删标记本身的话，每跑一次空行就累积一层。
-
-插入点上方的空行也要先规范化，否则文档末尾的空元素会让首尾两次结果不同。
+旧的 `strip_generated` 仍然保留为扫描入口，但 `render_inplace` 不再“先全删再全插”：
 
 ```
 render_inplace(text):
-    stripped = strip_generated(text)          # 剥掉旧区块 + 周围空行
+    stripped, blocks = scan_generated(text)   # 记录旧区块，同时剥掉它们
     ctx = parse_document(stripped)
-    for diagram in ctx["diagrams"]:           # 从后往前插，避免行号偏移
-        index = diagram.end_line
-        while index > 0 and not lines[index-1].strip():   # 规范化上方空行
-            del lines[index-1]; index -= 1
-        lines[index:index] = ["", BEGIN, *cards, END, ""]
+    for diagram, cards in generated:
+        if 旧区块没有变化:
+            leave block untouched            # marker/空行都不动
+        else:
+            merge_card_chunks(旧区块, cards)   # 未变卡片连 marker 保留
+    insert missing blocks bottom-up
 ```
+
+合并规则：
+
+1. 正文完全相同的旧卡块原样保留；
+2. 题面改了但答案相同的卡片（例如表头改名）按原顺序对应，移动时保留旧 marker；
+3. 新增卡片没有 marker；删掉的卡片才丢弃 marker，让 AHS 按 orphan 逻辑处理；
+4. AHS 写在 `<!-- END GENERATED -->` 后面的最后一张卡 marker，也会被识别并归到最后一张旧卡上。块需要重建时，这个 marker 会被移回 END 之前，避免以后卡序变化时串号。
+
+## 与 Anki Heading Sync 的增量契约
+
+Anki Heading Sync 当前主链使用 `<!--ID: noteId-->` 作为 durable identity：
+
+1. 扫描标题卡片时，先找标题块尾部的合法 ID marker；
+2. 找到就复用 marker 里的 noteId；找不到才按“同文件 + 同 rawBlockHash”
+   从插件 state 里恢复；再找不到才当新卡；
+3. 内容变化表现为 rawBlockHash 变化，但 noteId 不变，所以 planner 走
+   `toUpdate`，执行 AnkiConnect `updateNoteFields` 覆盖同一个 note；
+4. 如果 marker 丢了且内容也变了，state recovery 会失败，于是走
+   `toCreate` 新建 note，旧 note 变成 orphan —— 这就是重复卡来源。
+
+因此 `md-diagram-cards` 的职责不是自己覆盖 Anki，而是：
+
+- 把 `<!--ID: ...-->` 当受保护内容，卡片没删就不丢；
+- 只改正文发生变化的卡片，其他卡片和 marker 原样保留；
+- 表头/行列增删后，把 marker 跟到正确的卡片槽位，让 AHS 自己决定
+  update、create 还是 orphan。
+
+另外：AHS 的最后一张卡会把 `<!-- END GENERATED -->` 当成正文的一部分，
+因此它的 `<!--ID: ...-->` 经常写在 END 后面。扫描器需要把 END 后的
+marker 也归到最后一张卡，并在块重建时移回卡片正文末尾，避免串号。
 
 ## 输出模式
 

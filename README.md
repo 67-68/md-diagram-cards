@@ -92,6 +92,10 @@ python -m md_diagram_cards notes.md --mode inplace --report json
 `inplace` 模式把卡片包在 `<!-- BEGIN GENERATED -->` / `<!-- END GENERATED -->`
 之间，插在各自 diagram 之后。重复执行结果一致。
 
+更新时是按 diagram 做增量替换：没变的卡片块完全不动，已有
+`<!--ID: noteId-->` / `<!-- AHS:...-->` marker 会保留，AHS 下一次 sync
+可以按同一个 noteId 更新 Anki 内容，而不是重新建卡。
+
 诊断信息走 stderr（几个结构、几张卡片、警告、提示）：
 
 ```
@@ -159,6 +163,7 @@ npm install && npm run build
 python3 tools/check_fixtures.py      # 卡片产出是否与 expected 一致
 python3 tools/check_idempotent.py    # inplace 模式是否幂等
 python3 tools/check_report.py        # 报告里的卡片数是否和 expected 对得上
+python3 tools/check_surgical.py      # 改表头/增删列时 marker 是否按卡保留
 ```
 
 ```bash
