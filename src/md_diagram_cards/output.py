@@ -164,7 +164,9 @@ def convert_inplace(text: str, categories: dict[str, str] | None = None) -> Conv
 
     for diagram in diagrams:
         cards = format_diagram(diagram, ctx)
-        summaries.append(DiagramSummary(diagram.kind, diagram.title, diagram.line + 1, len(cards)))
+        summaries.append(
+            DiagramSummary(diagram.kind, diagram.title, diagram.line + 1, len(cards), len(diagram.excluded))
+        )
         produced_cards.append(cards)
 
     lines = text.split("\n")
@@ -539,7 +541,11 @@ def convert_new_file(text: str, categories: dict[str, str] | None = None) -> Con
 
     for diagram in ctx["diagrams"]:
         produced = format_diagram(diagram, ctx)
-        summaries.append(DiagramSummary(diagram.kind, diagram.title, diagram.line + 1, len(produced)))
+        summaries.append(
+            DiagramSummary(
+                diagram.kind, diagram.title, diagram.line + 1, len(produced), len(diagram.excluded)
+            )
+        )
         cards.extend(produced)
 
     return Conversion(text=render_cards(cards), warnings=ctx["warnings"], diagrams=summaries)

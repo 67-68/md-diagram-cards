@@ -24,6 +24,11 @@ NO_CARD_HINT = (
     "或者表格缺表头 / 第 1 列（行实体）为空（表格每行都要以 `|` 开头和结尾）。"
 )
 
+EXCLUDED_ONLY_HINT = (
+    "找到了结构但一张卡都没产出，其中一部分行标了 `@exclude`（这些行是有意跳过的）—— "
+    "本来就该出卡的话，把标注去掉；否则检查一下正文 / 表格是不是空的。"
+)
+
 
 @dataclass
 class DiagramSummary:
@@ -33,6 +38,7 @@ class DiagramSummary:
     title: str
     line: int
     cards: int
+    excluded: int = 0  # 标了 @exclude、整行跳过的行数
 
     @property
     def kind_label(self) -> str:
@@ -45,6 +51,7 @@ class DiagramSummary:
             "title": self.title,
             "line": self.line,
             "cards": self.cards,
+            "excluded": self.excluded,
         }
 
 
@@ -69,19 +76,25 @@ class Conversion:
         return [diagram for diagram in self.diagrams if diagram.cards == 0]
 
     @property
+    def excluded_rows(self) -> int:
+        """被 `@exclude` 整行跳过的行数。"""
+        return sum(diagram.excluded for diagram in self.diagrams)
+
+    @property
     def hints(self) -> list[str]:
         """给用户看的下一步提示 —— 只在真的可疑时才出现。"""
         if self.diagram_count == 0:
             return [NO_DIAGRAM_HINT]
 
         if self.card_count == 0:
-            return [NO_CARD_HINT]
+            return [EXCLUDED_ONLY_HINT if self.excluded_rows else NO_CARD_HINT]
 
         empty = self.empty_diagrams
         if empty:
             titles = "、".join(diagram.title or "(无标题)" for diagram in empty[:3])
             more = f" 等 {len(empty)} 个" if len(empty) > 3 else ""
-            return [f"有 {len(empty)} 个结构没产出卡片：{titles}{more}（正文或表格是空的？）"]
+            skipped = f"（其中 {self.excluded_rows} 行标了 @exclude）" if self.excluded_rows else ""
+            return [f"有 {len(empty)} 个结构没产出卡片：{titles}{more}{skipped}（正文或表格是空的？）"]
 
         return []
 

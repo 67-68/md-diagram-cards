@@ -263,6 +263,56 @@ def main() -> int:
         and sorted(re.findall(r"<!--ID: (\d+)-->", media_replaced_result)) == ["101", "102", "103"],
     )
 
+    # 7. 给某一行加 @exclude：那一行的卡（连 marker）一起消失，别的卡 marker 原位不动。
+    excluded_source = media_synced.replace("| 明亮 | high | high-01.mp3 |", "| 明亮 @exclude | high | high-01.mp3 |")
+    excluded_result = convert_inplace(excluded_source).text
+    excluded_generated = excluded_result.split("<!-- BEGIN GENERATED -->")[1] if "<!-- BEGIN GENERATED -->" in excluded_result else ""
+
+    failures += not _check(
+        "@exclude 那一行的卡被删掉（普通卡 + 媒体卡）",
+        "明亮" not in excluded_generated and "high-01" not in excluded_generated,
+        excluded_generated,
+    )
+    failures += not _check(
+        "@exclude 不影响其他行的 marker",
+        "#### in [bands] [沉闷]'s [频段] is?\n- low\n<!--ID: 101-->" in excluded_result
+        and "#### 例子音频low-01.mp3's 频段 is?\n- low\n<!--ID: 103-->" in excluded_result,
+        excluded_result,
+    )
+
+    # 8. 反向媒体列（@[back, front=列头(y)]）同样按卡保 marker：
+    #    加一行 → 旧 marker 原位不动；只改音频文件名（题面不变）→ marker 保住。
+    back_source = """### [d-orthogonal] bands
+
+| 效果 | 频段 | 例子音频@[back, front=频段(y)] |
+| --- | --- | --- |
+| 沉闷 | low | a.mp3 |
+| 明亮 | high | b.mp3 |
+"""
+    back_marked = _inject_ahs_markers(convert_inplace(back_source).text, last_after_end=True)
+    back_added = convert_inplace(back_marked.replace("| 明亮 | high | b.mp3 |", "| 明亮 | high | b.mp3 |\n| 中性 | mid | c.mp3 |")).text
+    failures += not _check(
+        "反向媒体列：加一行后旧 marker 一张不串位",
+        all(
+            chunk in back_added
+            for chunk in (
+                "#### in [bands] [沉闷]'s [频段] is?\n- low\n<!--ID: 101-->",
+                "#### 频段(low)'s 例子音频 is?\n- a.mp3\n<!--ID: 102-->",
+                "#### in [bands] [明亮]'s [频段] is?\n- high\n<!--ID: 103-->",
+                "#### 频段(high)'s 例子音频 is?\n- b.mp3\n<!--ID: 104-->",
+            )
+        )
+        and sorted(re.findall(r"<!--ID: (\d+)-->", back_added)) == ["101", "102", "103", "104"],
+        back_added,
+    )
+
+    back_edited = convert_inplace(back_marked.replace("| 沉闷 | low | a.mp3 |", "| 沉闷 | low | a2.mp3 |")).text
+    failures += not _check(
+        "反向媒体列：只改音频文件名 → 题面不变，marker 保住",
+        "#### 频段(low)'s 例子音频 is?\n- a2.mp3\n<!--ID: 102-->" in back_edited,
+        back_edited,
+    )
+
     print()
     if failures:
         print(f"FAILED: {failures} 项")

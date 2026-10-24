@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 
 from .diagnostics import warn
-from .model import Column, Diagram, Inference, Item, Link, Row
+from .model import Column, Diagram, Inference, Item, Link, MediaField, Row
 
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
 DIAGRAM_MARKER_RE = re.compile(r"^\[d-([a-z]+)\]\s*(.*)$")
@@ -20,11 +20,16 @@ BULLET_RE = re.compile(r"^([ \t]*)(?:[-*+]|\d+[.)])\s+(.*?)\s*$")
 BR_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
 BULLET_PREFIX_RE = re.compile(r"^(?:[-*+]|\d+[.)])\s+")
 
-# 表头标注：`例子音频@[front, back=频段]`。只对表头单元格生效，
-# 和正文里的 `@cat` 外链是两套语法，互不影响。
+# 表头标注：`例子音频@[front, back=频段]` / `例子音频@[back, front=频段(y)]`。
+# 只对表头单元格生效，和正文里的 `@cat` 外链是两套语法，互不影响。
 COLUMN_SPEC_RE = re.compile(r"^(?P<header>.*?)\s*@\[(?P<spec>[^\[\]]*)\]\s*$")
-MEDIA_FRONT = "front"
-MEDIA_BACK_PREFIX = "back="
+# 标注里的一侧：`front` / `back=列头` / `front=列头(模板)`。
+MEDIA_FIELD_RE = re.compile(
+    r"^(?P<side>front|back)\s*(?:=\s*(?P<target>[^()]*?)\s*(?:\((?P<template>.*)\))?)?$"
+)
+
+# 整行跳过：`@exclude` 写在正交表某行的第 1 列（行实体）上。
+EXCLUDE_RE = re.compile(r"@exclude\b", re.IGNORECASE)
 
 CUSTOM_RE = re.compile(r"@custom\(\s*([^)]*?)\s*\)")
 CAT_VALUE_RE = re.compile(r"@([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([^@]*)")
@@ -224,9 +229,18 @@ def parse_table(block: dict, title: str, ctx: dict | None = None) -> Diagram:
         if not cells:
             continue
 
-        entity = cells[0]
+        entity_cell = cells[0]
+        if EXCLUDE_RE.search(entity_cell):
+            # 整行只是给人看的辅助说明：不算进表格，一行卡都不出。
+            diagram.excluded.append(Row(entity=EXCLUDE_RE.sub("", entity_cell).strip(), line=line_no))
+            continue
+
+        entity = entity_cell.strip()
         if not entity:
             continue  # 行实体为空 → 跳过整行
+
+        if ctx is not None and any(EXCLUDE_RE.search(cell) for cell in cells[1:]):
+            warn(ctx, "@exclude 只对第 1 列（行实体）生效，其他列里写了会被当成正文", line_no)
 
         values = [split_cell_values(cell) for cell in cells[1:]]
         diagram.rows.append(Row(entity=entity, values=values, line=line_no))
@@ -251,19 +265,59 @@ def parse_column(cell: str, ctx: dict | None = None, line: int = 0) -> Column:
         spec = raw.strip()
         if not spec:
             continue
-        if spec == MEDIA_FRONT:
-            column.front = True
-        elif spec.startswith(MEDIA_BACK_PREFIX):
-            column.back = spec[len(MEDIA_BACK_PREFIX):].strip()
-        elif ctx is not None:
-            warn(
-                ctx,
-                f"表头 [{column.header}] 的 @[...] 标注里有认不出的写法: {spec}"
-                "（只支持 front / back=列头）",
-                line,
-            )
+
+        field = parse_media_field(spec, column.header, ctx, line)
+        if field is None:
+            continue
+
+        side, value = field
+        if getattr(column, side) is not None and ctx is not None:
+            warn(ctx, f"表头 [{column.header}] 的 @[...] 里 {side} 写了不止一次（用最后一次）", line)
+        setattr(column, side, value)
 
     return column
+
+
+def parse_media_field(spec: str, header: str, ctx: dict | None, line: int = 0) -> tuple[str, MediaField] | None:
+    """解析标注里的一侧：`front` / `back=列头` / `front=列头(模板)`。
+
+    认不出来 → 警告 + 返回 None（这一侧当没写）。
+    """
+    match = MEDIA_FIELD_RE.match(spec)
+    if not match:
+        if ctx is not None:
+            warn(
+                ctx,
+                f"表头 [{header}] 的 @[...] 标注里有认不出的写法: {spec}"
+                "（只支持 front / back / back=列头 / front=列头(y)）",
+                line,
+            )
+        return None
+
+    side = match.group("side")
+    target = (match.group("target") or "").strip()
+    inner = match.group("template")
+
+    if not target:
+        if inner is not None and ctx is not None:
+            warn(
+                ctx,
+                f"表头 [{header}] 的 @[...] 里 {side}({inner}) 少了列名"
+                f"（想用本列的值就写 {side}）",
+                line,
+            )
+        return side, MediaField(own=True)
+
+    # `front=频段(y)` 的题面文字是**整个 `频段(y)`**，`y` 才是值的位置。
+    template = f"{target}({inner})" if inner is not None else ""
+    if template and "y" not in template and "{value}" not in template and ctx is not None:
+        warn(
+            ctx,
+            f"表头 [{header}] 的 @[...] 里模板 {template} 没有 y 占位符，值不会出现在题面里",
+            line,
+        )
+
+    return side, MediaField(column=target, template=template)
 
 
 def split_row(line: str) -> list[str]:

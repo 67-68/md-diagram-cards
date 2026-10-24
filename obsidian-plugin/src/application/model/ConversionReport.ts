@@ -5,6 +5,8 @@ export interface DiagramSummary {
   title: string;
   line: number;
   cards: number;
+  /** 标了 @exclude、整行跳过的行数（老版本 Python 可能没这个字段）。 */
+  excluded?: number;
 }
 
 export interface ConversionWarning {

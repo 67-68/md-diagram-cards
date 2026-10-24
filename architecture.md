@@ -23,8 +23,10 @@ parse_document(text) -> Context
 │       ├─ [d-orthogonal] → parse_table(block, title, ctx)
 │       │   ├─ 表头每个单元格 → parse_column(cell, ctx)
 │       │   │   └─ `列头@[front, back=列头]` → Column(header, front, back)
+│       │   │       ├─ 一侧 = MediaField：own(本列) / column(哪一列) / template
 │       │   │       └─ 只是表头标注，和正文的 @cat 外链两套语法
 │       │   └─ 对每个数据行:
+│       │       ├─ cells[0] 带 @exclude → 整行进 diagram.excluded，不产卡
 │       │       ├─ ctx["行实体"] = cells[0]
 │       │       └─ 其余单元格 → split_cell_values: `<br>` 切多值
 │       │
@@ -79,9 +81,10 @@ format(ctx) -> Card[]
 └─ [d-orthogonal] → format_table(d, ctx)
     └─ 对每个 (行实体, 列, 单元格):
         ├─ 普通列: make_card("in [{表题}] [{行实体}]'s [{列头}] is?", 单元格的值列表)
-        └─ 媒体列 (Column.is_media): format_media_column(row, column, ...)
-            └─ make_card("{列头}{本列的值}'s {back 列头} is?", back 列同一行的值列表)
-                ← 不出普通卡；一行多个媒体 → 一个媒体一张卡
+        └─ 媒体列 (Column.is_media):
+            ├─ resolve_media_column: 把 front/back 两侧解析成列下标（MediaPlan）
+            └─ format_media_cards: make_card("{front 侧文字}'s {back 侧列名} is?", back 侧的值列表)
+                ← 不出普通卡；front 侧多个值 → 一个值一张卡
 ```
 
 `format_list` 同时产「整张图的卡」和「每条项的卡」—— 这就是
@@ -91,8 +94,15 @@ format(ctx) -> Card[]
 `format_tree` 同理：每个节点自己产「父问子」卡，再递归下行。
 
 `format_table` 是「一列一种产卡方式」：普通列问「这一行的这列是什么」，
-媒体列（表头标了 `@[front, back=列头]`）问「这个例子音频属于哪一档」——
+媒体列（表头标了 `@[front..., back...]`）问「这个例子音频属于哪一档」/「这一档的例子音频是哪个」——
 音频不是表格的一个维度，不跟行实体组成卡片。
+
+媒体列的两个方向在数据结构里是对称的：`front` / `back` 各是一个 `MediaField`
+（值来自本列还是别的列、要不要套模板），产卡时只做两次「取值 → 拼题面 → 收答案」，
+所以 `@[front, back=频段]` 和 `@[back, front=频段(y)]` 走的是同一段代码。
+
+整行标了 `@exclude` 的行在解析阶段就进了 `diagram.excluded`，**根本到不了格式化层**：
+「这一行只是辅助说明」是解析期的判断，不需要每个 format_* 函数各判一遍。
 
 ---
 

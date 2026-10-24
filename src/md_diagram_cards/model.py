@@ -63,32 +63,63 @@ class Inference:
 
 
 @dataclass
+class MediaField:
+    """媒体列的一侧（front / back）：值从哪来、要不要套模板。
+
+    三种写法对应三种 MediaField：
+
+        front         → own=True                    本列单元格的值
+        back=频段      → column="频段"                那一列的值，原样用
+        front=频段(y)  → column="频段", template="频段(y)"  套模板
+
+    模板里 `y`（或 `{value}`）是值占位符。
+    """
+
+    own: bool = False
+    column: str = ""
+    template: str = ""
+
+    def render(self, value: str) -> str:
+        """把一个值套进模板。没有模板就原样返回。"""
+        if not self.template:
+            return value
+        if "{value}" in self.template:
+            # 写了 {value} 就只认它，模板里其它的 y 保持原样。
+            return self.template.replace("{value}", value)
+        return self.template.replace("y", value)
+
+
+@dataclass
 class Column:
     """正交表的一列（表头单元格）。
 
-    表头可以带 `@[front, back=列头]` 标注，标成**媒体列**：
+    表头可以带 `@[front..., back...]` 标注，标成**媒体列**：
 
         | 效果 | 频段 | 例子音频@[front, back=频段] |
+        | 效果 | 频段 | 例子音频@[back, front=频段(y)] |
 
-    - ``header`` 是剥掉标注后的列名（题面、back= 按这个匹配）；
-    - ``front`` 表示把本列单元格的值写进题面；
-    - ``back`` 是答案列名（同一行里那一列的值当答案）。
+    - ``header`` 是剥掉标注后的列名（题面、`=` 后面的列名都按它匹配）；
+    - ``front`` / ``back`` 各自说明「题面」「答案」从哪来（见 MediaField）。
 
     媒体列**不出**普通的 `in [表题] [行实体]'s [列头] is?` 卡。
     """
 
     header: str = ""
-    front: bool = False
-    back: str = ""
+    front: MediaField | None = None
+    back: MediaField | None = None
 
     @property
     def is_media(self) -> bool:
-        return self.front or bool(self.back)
+        return self.front is not None or self.back is not None
 
 
 @dataclass
 class Row:
-    """正交表的一行。values 与 columns[1:] 对齐（第 1 列被抽成 entity）。"""
+    """正交表的一行。values 与 columns[1:] 对齐（第 1 列被抽成 entity）。
+
+    标了 `@exclude` 的行放在 ``Diagram.excluded`` 里：它不算进表格，
+    只当辅助说明，一行卡都不出（``values`` 也不填）。
+    """
 
     entity: str
     values: list[list[str]] = field(default_factory=list)
@@ -109,6 +140,7 @@ class Diagram:
     # orthogonal
     columns: list[Column] = field(default_factory=list)
     rows: list[Row] = field(default_factory=list)
+    excluded: list[Row] = field(default_factory=list)  # 标了 @exclude、整行跳过的行
 
     @property
     def headers(self) -> list[str]:
