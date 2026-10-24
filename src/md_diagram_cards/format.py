@@ -21,6 +21,10 @@ CATEGORY_TEMPLATES: dict[str, str] = {
 #: 模板里允许出现的占位符。
 CATEGORY_PLACEHOLDERS = ("key", "value")
 
+#: 答案 >= 2 时给题面加的前缀。输出层要靠它认出“同一张卡换了个成卡形态”，
+#: 所以只在这里定义一份。
+CLOZE_PREFIX = "[cloze]"
+
 
 def merge_categories(custom: dict[str, str] | None = None) -> dict[str, str]:
     """内置表 + 自定义表。自定义按 key **覆盖**内置（方便改写措辞）。"""
@@ -41,7 +45,7 @@ def make_card(question: str, answers: list[str], line: int = 0) -> Card:
     """所有卡片唯一的出口，cloze 判定只写这一遍。"""
     answers = [answer for answer in answers if answer]
     if len(answers) >= 2:
-        question = f"[cloze] {question}"
+        question = f"{CLOZE_PREFIX} {question}"
     return Card(question=question, answers=answers, line=line)
 
 

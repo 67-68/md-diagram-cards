@@ -96,6 +96,11 @@ python -m md_diagram_cards notes.md --mode inplace --report json
 `<!--ID: noteId-->` / `<!-- AHS:...-->` marker 会保留，AHS 下一次 sync
 可以按同一个 noteId 更新 Anki 内容，而不是重新建卡。
 
+marker 只在确认“是同一张卡”时才迁移：题面相同（答案改了也算），或
+答案不变、题面只是改名（表头改名）。判不准的一律当新卡，**新卡不会
+继承任何旧 marker**——宁可让旧 note 变 orphan，也不能让新卡顶着别人的
+noteId 去覆盖别人的卡。
+
 诊断信息走 stderr（几个结构、几张卡片、警告、提示）：
 
 ```
@@ -163,7 +168,7 @@ npm install && npm run build
 python3 tools/check_fixtures.py      # 卡片产出是否与 expected 一致
 python3 tools/check_idempotent.py    # inplace 模式是否幂等
 python3 tools/check_report.py        # 报告里的卡片数是否和 expected 对得上
-python3 tools/check_surgical.py      # 改表头/增删列时 marker 是否按卡保留
+python3 tools/check_surgical.py      # 改表头/增删内容时 marker 是否按卡保留（新卡不继承）
 ```
 
 ```bash

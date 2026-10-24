@@ -13,6 +13,9 @@
 重复执行时只重写发生变化的 diagram 区块；没变化的卡片块（包括
 Anki Heading Sync 写在卡片末尾的 ``<!--ID: ...-->`` 标记）保持原样。
 这样下一次 sync 能靠稳定 noteId 增量更新，而不是新建重复卡片。
+
+marker 只在能确认“是同一张卡”时才跟着新卡片走（见 ``_match_chunks``）：
+判不准的一律当新卡，绝不把别人的 noteId 贴到新卡上。
 """
 from __future__ import annotations
 
@@ -22,7 +25,7 @@ from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 
-from .format import format_diagram, merge_categories
+from .format import CLOZE_PREFIX, format_diagram, merge_categories
 from .parse import DIAGRAM_MARKER_RE, HEADING_RE, parse_document
 from .render import render_card, render_cards
 from .report import Conversion, DiagramSummary
@@ -34,8 +37,13 @@ END_MARK = "<!-- END GENERATED -->"
 # 只认这些行，避免误吞卡片正文里的普通 HTML 注释。
 _CARD_MARKER_RE = re.compile(r"^\s*<!--\s*(?:ID:|AHS:).*?-->\s*$", re.IGNORECASE)
 
-# 匹配“改动很小的同一张卡”：先匹配正文完全相同，再允许题面改词但答案保持。
-_MIN_SIMILARITY = 0.2
+# 表头改名这类“答案不变、只是题面改词”的改动：题面相似度至少这么高才
+# 认成同一张卡。认不出就宁可当新卡，也不要把 marker 串给别的卡。
+_RENAME_QUESTION_SIMILARITY = 0.6
+
+# `make_card` 在答案 >= 2 时给题面加的前缀（定义在 format 层）。它只是
+# “成卡形态”，不属于卡片身份：同一张卡在答案增删时会来回切换。
+_CLOZE_PREFIX = f"{CLOZE_PREFIX} "
 
 
 @dataclass
@@ -381,6 +389,9 @@ def _merge_block(old_lines: list[str], cards) -> list[str]:
 
     matches = _match_chunks(old_chunks, new_chunks)
     merged_chunks: list[list[str]] = []
+    # 同一个 noteId 只允许出现在一张卡上：万一旧块里本来就有重复 marker，
+    # 也只留第一份，绝不让两张卡共用一个 noteId。
+    seen_markers: set[str] = set()
 
     for index, new_chunk in enumerate(new_chunks):
         old_index = matches[index]
@@ -388,8 +399,15 @@ def _merge_block(old_lines: list[str], cards) -> list[str]:
             merged_chunks.append(new_chunk)
             continue
 
-        old_chunk = old_chunks[old_index]
-        markers = [line for line in old_chunk if _is_marker_line(line)]
+        markers: list[str] = []
+        for line in old_chunks[old_index]:
+            if not _is_marker_line(line):
+                continue
+            key = line.strip()
+            if key in seen_markers:
+                continue
+            seen_markers.add(key)
+            markers.append(line)
         merged_chunks.append([*new_chunk, *markers])
 
     merged_body: list[str] = []
@@ -401,75 +419,109 @@ def _merge_block(old_lines: list[str], cards) -> list[str]:
     return [old_lines[0], *merged_body, old_lines[end_marker_index]]
 
 
+def _card_question(chunk: list[str]) -> str:
+    """卡片题面：``#### `` 后面那行，去掉 ``[cloze] `` 前缀。"""
+    for line in chunk:
+        if not line.startswith("#### "):
+            continue
+        question = line[len("#### "):].strip()
+        if question.startswith(_CLOZE_PREFIX):
+            question = question[len(_CLOZE_PREFIX):].strip()
+        return question
+    return ""
+
+
+def _card_answers(chunk: list[str]) -> tuple[str, ...]:
+    return tuple(line.rstrip() for line in chunk if line.startswith("- "))
+
+
+def _question_similarity(left: str, right: str) -> float:
+    if left == right:
+        return 1.0
+    return SequenceMatcher(None, left, right).ratio()
+
+
 def _match_chunks(old_chunks: list[list[str]], new_chunks: list[list[str]]) -> list[int | None]:
-    """把新卡片按“先精确、再同序号、最后相似度”的顺序匹配到旧卡片。"""
+    """把新卡片配对到旧卡片；只有能确认“是同一张卡”时才配对（才迁移 marker）。
+
+    判定顺序（由强到弱）：
+
+    1. 正文完全一致 —— 同一张卡没动；
+    2. 题面一致（忽略 ``[cloze] `` 前缀）—— 同一张卡的内容被改写；
+    3. 答案一致、题面只是改名（表头改名）—— 还要求题面相似度够高。
+
+    配不上的新卡片一律当新卡，**不继承任何 note marker**。宁可让旧 note
+    变成 orphan（AHS 下次 sync 会 create 新卡），也不能把别的卡的 noteId
+    贴到新卡上：那样 AHS 会 update 错 note，把另一张卡的内容覆盖掉，
+    而且那一张真正被顶掉的卡还会被重新 create 成重复卡。
+    """
     matches: list[int | None] = [None] * len(new_chunks)
     used_old: set[int] = set()
 
+    def take(new_index: int, old_index: int) -> None:
+        matches[new_index] = old_index
+        used_old.add(old_index)
+
+    # 1) 正文完全一致。
     exact_buckets: dict[tuple[str, ...], deque[int]] = defaultdict(deque)
     for old_index, chunk in enumerate(old_chunks):
         exact_buckets[_visible_lines(chunk)].append(old_index)
 
     for new_index, chunk in enumerate(new_chunks):
-        key = tuple(line.rstrip() for line in chunk)
-        bucket = exact_buckets.get(key)
+        bucket = exact_buckets.get(tuple(line.rstrip() for line in chunk))
         if bucket:
-            old_index = bucket.popleft()
-            matches[new_index] = old_index
-            used_old.add(old_index)
+            take(new_index, bucket.popleft())
 
+    # 2) 题面一致：同一张卡的答案被增删/改写（含 cloze 前缀来回切换）。
+    question_buckets: dict[str, deque[int]] = defaultdict(deque)
+    for old_index, chunk in enumerate(old_chunks):
+        question = _card_question(chunk)
+        if question:
+            question_buckets[question].append(old_index)
+
+    for new_index, chunk in enumerate(new_chunks):
+        if matches[new_index] is not None:
+            continue
+        question = _card_question(chunk)
+        if not question:
+            continue
+        bucket = question_buckets.get(question)
+        while bucket and bucket[0] in used_old:
+            bucket.popleft()
+        if bucket:
+            take(new_index, bucket.popleft())
+
+    # 3) 答案一致、题面被改名：只有一对一、且题面确实很像才认。
     remaining_new = [index for index, old_index in enumerate(matches) if old_index is None]
-    remaining_old = [index for index in range(len(old_chunks)) if index not in used_old]
-
-    if not remaining_new or not remaining_old:
+    if not remaining_new:
         return matches
 
-    # 表头改名这类改动：数量通常不变，旧的“其他卡片”已经精确匹配掉，
-    # 剩下的旧/新卡片按原顺序一一对应，避免把 marker 串给别的卡。
-    if len(remaining_new) == len(remaining_old):
-        for new_index, old_index in zip(remaining_new, remaining_old):
-            matches[new_index] = old_index
-        return matches
-
-    # 增删行/列：按答案和题面相似度贪心匹配，没匹配上的旧卡删 marker。
+    new_by_answers: dict[tuple[str, ...], list[int]] = defaultdict(list)
     for new_index in remaining_new:
-        best_old: int | None = None
-        best_score = _MIN_SIMILARITY
+        answers = _card_answers(new_chunks[new_index])
+        if answers:
+            new_by_answers[answers].append(new_index)
 
-        for old_index in remaining_old:
-            if old_index in used_old:
-                continue
-            score = _chunk_similarity(old_chunks[old_index], new_chunks[new_index])
-            if score > best_score:
-                best_score = score
-                best_old = old_index
+    old_by_answers: dict[tuple[str, ...], list[int]] = defaultdict(list)
+    for old_index, chunk in enumerate(old_chunks):
+        if old_index in used_old:
+            continue
+        answers = _card_answers(chunk)
+        if answers:
+            old_by_answers[answers].append(old_index)
 
-        if best_old is not None:
-            matches[new_index] = best_old
-            used_old.add(best_old)
+    for answers, new_indexes in new_by_answers.items():
+        old_indexes = old_by_answers.get(answers, [])
+        if len(new_indexes) != 1 or len(old_indexes) != 1:
+            continue
+
+        new_index, old_index = new_indexes[0], old_indexes[0]
+        similarity = _question_similarity(_card_question(old_chunks[old_index]), _card_question(new_chunks[new_index]))
+        if similarity < _RENAME_QUESTION_SIMILARITY:
+            continue
+        take(new_index, old_index)
 
     return matches
-
-
-def _chunk_similarity(old_chunk: list[str], new_chunk: list[str]) -> float:
-    old_visible = list(_visible_lines(old_chunk))
-    new_visible = [line.rstrip() for line in new_chunk]
-
-    if old_visible == new_visible:
-        return 1.0
-
-    old_answers = [line for line in old_visible if line.startswith("- ")]
-    new_answers = [line for line in new_visible if line.startswith("- ")]
-    old_question = old_visible[0] if old_visible else ""
-    new_question = new_visible[0] if new_visible else ""
-
-    if old_answers == new_answers:
-        answer_score = 0.6
-    else:
-        answer_score = 0.4 * SequenceMatcher(None, old_answers, new_answers).ratio()
-
-    question_score = 0.4 * SequenceMatcher(None, old_question, new_question).ratio()
-    return answer_score + question_score
 
 
 def render_inplace(text: str, categories: dict[str, str] | None = None) -> tuple[str, list[dict]]:

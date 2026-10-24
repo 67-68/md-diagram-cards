@@ -143,12 +143,22 @@ render_inplace(text):
     insert missing blocks bottom-up
 ```
 
-合并规则：
+合并规则（**只有能确认“是同一张卡”时才迁移 marker**）：
 
-1. 正文完全相同的旧卡块原样保留；
-2. 题面改了但答案相同的卡片（例如表头改名）按原顺序对应，移动时保留旧 marker；
-3. 新增卡片没有 marker；删掉的卡片才丢弃 marker，让 AHS 按 orphan 逻辑处理；
-4. AHS 写在 `<!-- END GENERATED -->` 后面的最后一张卡 marker，也会被识别并归到最后一张旧卡上。块需要重建时，这个 marker 会被移回 END 之前，避免以后卡序变化时串号。
+1. 正文完全相同 → 同一张卡，marker 原样保留；
+2. 题面相同（忽略 `[cloze] ` 前缀）→ 同一张卡，只是答案被增删/改写，
+   保留 marker（AHS 走 `toUpdate`）；
+3. 答案完全相同、题面只是改名（例如表头改名）→ 保留 marker，但要求
+   一对一、且题面相似度够高，避免把 marker 串给别的卡；
+4. 其余一律算新卡：**新卡不继承任何 marker**。删掉的卡片才丢弃 marker，
+   让 AHS 按 orphan 逻辑处理；
+5. AHS 写在 `<!-- END GENERATED -->` 后面的最后一张卡 marker，也会被识别并归到最后一张旧卡上。块需要重建时，这个 marker 会被移回 END 之前，避免以后卡序变化时串号；
+6. 同一个 noteId 只允许出现在一张卡上：旧块里万一有重复 marker，只留第一份。
+
+> 为什么第 4 条要这么保守：新卡若顶了别人的 noteId，AHS 下次 sync 会
+> `updateNoteFields` 把**别人那张卡**的内容覆盖掉，而真正被顶掉的那张卡
+> 反而丢了身份、被重新 create 成重复卡。宁可让旧 note 变 orphan
+> （丢一次复习记录），也绝不能串号。
 
 ## 与 Anki Heading Sync 的增量契约
 
@@ -166,6 +176,8 @@ Anki Heading Sync 当前主链使用 `<!--ID: noteId-->` 作为 durable identity
 
 - 把 `<!--ID: ...-->` 当受保护内容，卡片没删就不丢；
 - 只改正文发生变化的卡片，其他卡片和 marker 原样保留；
+- 只有能确认是同一张卡时才迁移 marker：题面相同、或答案相同且题面只是
+  改名。判不准的一律当新卡，**绝不让新卡继承别人的 noteId**；
 - 表头/行列增删后，把 marker 跟到正确的卡片槽位，让 AHS 自己决定
   update、create 还是 orphan。
 
