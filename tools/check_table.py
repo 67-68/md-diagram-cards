@@ -8,10 +8,11 @@
 - 标注写坏（缺 front / 缺 back / back 列不存在 / 认不出的写法）→ 警告 + 不产卡；
 - 标注只用于表头，不影响正文里的 `@cat` 外链。
 
-辅助行（`@exclude`）：
-- 第 1 列（行实体）标了 `@exclude` → **整行不产卡**，普通卡和媒体卡都不出；
-- 行本身不进入 `diagram.rows`，也不参与 `back=` 的列查找；
-- 写在别的列 → 警告（会被当成正文）；写在列表条目上 → 警告（只支持表格行）。
+`@exclude`（标了什么就整个跳过什么）：
+- 表头标了 `@exclude`（`备注@exclude` / `备注@[exclude]`）→ **整列不出卡**；
+- 第 1 列（行实体）标了 `@exclude` → **整行不出卡**，普通卡和媒体卡都不出；
+- 行不进入 `diagram.rows`，列不参与产卡；报告里分别计 `excluded` / `excluded_columns`；
+- 行标在别的列 → 警告（会被当成正文）；写在列表条目上 → 警告（只支持表格）。
 """
 from __future__ import annotations
 
@@ -309,6 +310,78 @@ conversion = convert_inplace(HEAD + """| 效果 | 频段 |
 | b @exclude | y |
 """)
 _check("全排除 → 0 张卡 + 专门的提示", conversion.card_count == 0 and "@exclude" in conversion.hints[0], f"{conversion.hints}")
+
+print("\n@exclude：整列不算进卡片")
+COLUMN_TABLE = """| 效果 | 频段 | 备注@exclude | 例子音频@[back, front=频段(y)] |
+| --- | --- | --- | --- |
+| 沉闷 | 低频 | 自己记的：偏闷 | muddy-01.mp3 |
+| 明亮 | 高频 | 自己记的：有点刺 | bright-01.mp3 |
+"""
+cards, warnings = convert(HEAD + COLUMN_TABLE)
+_check("无警告", warnings == [], f"{warnings}")
+_check(
+    "被排除的列一张卡都不出",
+    "备注" not in cards and "自己记的" not in cards,
+    f"{cards}",
+)
+_check(
+    "其余列照常出卡",
+    "#### in [T] [沉闷]'s [频段] is?\n- 低频" in cards
+    and "#### 频段(低频)'s 例子音频 is?\n- muddy-01.mp3" in cards,
+    f"{cards}",
+)
+_check("列排除后卡数正确（2 行 × 2 列）", len(_questions(cards)) == 4, f"{_questions(cards)}")
+
+conversion = convert_inplace(HEAD + COLUMN_TABLE)
+diagram = conversion.to_dict()["diagrams"][0]
+_check("报告里 excluded_columns = 1", diagram["excluded_columns"] == 1, f"{diagram}")
+_check("列排除不算「行排除」", diagram["excluded"] == 0, f"{diagram}")
+_check("报告摘要带「跳过 1 列」", "跳过 1 列" in conversion.excluded_note, conversion.excluded_note)
+
+cards, warnings = convert(
+    HEAD + """| 效果 | 频段 | 备注@[exclude] |
+| --- | --- | --- |
+| 沉闷 | 低频 | note |
+"""
+)
+_check("括号写法 @[exclude] 等价", "备注" not in cards and "note" not in cards, f"{cards}")
+
+cards, warnings = convert(
+    HEAD + """| 效果 | 频段 | 例子音频@[front, back=频段, exclude] |
+| --- | --- | --- |
+| 沉闷 | 低频 | a.mp3 |
+"""
+)
+_check(
+    "@exclude 和 @[...] 同时写 → 警告 + 整列不出卡",
+    any("同时写了 @exclude" in warning["message"] for warning in warnings) and "a.mp3" not in cards,
+    f"{warnings} / {cards}",
+)
+
+cards, warnings = convert(
+    HEAD + """| 效果@exclude | 频段 |
+| --- | --- |
+| 沉闷 | 低频 |
+"""
+)
+_check(
+    "第 1 列写 @exclude → 警告（本来就不出卡）",
+    any("本来就不出卡" in warning["message"] for warning in warnings),
+    f"{warnings}",
+)
+_check("第 1 列写 @exclude 不影响其余卡片", "#### in [T] [沉闷]'s [频段] is?\n- 低频" in cards, f"{cards}")
+
+cards, warnings = convert(
+    HEAD + """| 效果 | 频段 | 备注@exclude | 例子音频@[back, front=备注(y)] |
+| --- | --- | --- | --- |
+| 沉闷 | 低频 | 偏闷 | a.mp3 |
+"""
+)
+_check(
+    "被排除的列仍可以当值来源",
+    "#### 偏闷(y)'s 例子音频 is?" in cards or "#### 备注(偏闷)'s 例子音频 is?" in cards,
+    f"{cards}",
+)
 
 print("\n@exclude 写错地方")
 cards, warnings = convert(HEAD + """| 效果 | 频段 | 例子音频@[front, back=频段] |

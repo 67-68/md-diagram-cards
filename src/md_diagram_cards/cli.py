@@ -109,8 +109,8 @@ def emit_report(args: argparse.Namespace, conversion: Conversion, target: pathli
         return
 
     scope = f"{conversion.diagram_count} 个结构 → {conversion.card_count} 张卡片"
-    if conversion.excluded_rows:
-        scope += f"（另跳过 {conversion.excluded_rows} 行 @exclude）"
+    if conversion.excluded_note:
+        scope += f"（另{conversion.excluded_note}）"
 
     if not written:
         print(f"md-diagram-cards: {scope}（只预览，未写入）", file=sys.stderr)

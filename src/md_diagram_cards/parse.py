@@ -216,10 +216,12 @@ def parse_table(block: dict, title: str, ctx: dict | None = None) -> Diagram:
     header_line = table_lines[0][0]
     columns = [parse_column(cell, ctx, header_line) for cell in split_row(table_lines[0][1])]
 
-    # 第 1 列是行实体，不产卡，标了媒体列也是白标。
-    if columns and columns[0].is_media:
-        if ctx is not None:
+    # 第 1 列是行实体，本来就不产卡，标了也是白标。
+    if columns and (columns[0].is_media or columns[0].exclude):
+        if ctx is not None and columns[0].is_media:
             warn(ctx, "表格第 1 列是行实体，不能写 @[...] 媒体列标注（已忽略）", header_line)
+        if ctx is not None and columns[0].exclude:
+            warn(ctx, "表格第 1 列是行实体，本来就不出卡，不用写 @exclude（已忽略）", header_line)
         columns[0] = Column(header=columns[0].header)
 
     diagram.columns = columns
@@ -249,21 +251,33 @@ def parse_table(block: dict, title: str, ctx: dict | None = None) -> Diagram:
 
 
 def parse_column(cell: str, ctx: dict | None = None, line: int = 0) -> Column:
-    """解析表头单元格：`列头` 或 `列头@[front, back=列头]`（媒体列）。
+    """解析表头单元格。
 
-    标注写法逗号分隔，只支持 `front` 和 `back=列头` 两种。认不出的写法 →
-    警告，但不影响这一列本身（该列仍按能认出来的部分处理）。
+    支持三种标注（可组合，逗号分隔）：
+
+        | 备注@exclude |                 整列不出卡，只当辅助理解
+        | 例子音频@[front, back=频段] |   媒体列（见 parse_media_field）
+        | 备注@[exclude] |               同上，写在括号里也行
+
+    认不出的写法 → 警告，但不影响这一列本身（该列仍按能认出来的部分处理）。
     """
     text = cell.strip()
+    excluded = bool(EXCLUDE_RE.search(text))
+    text = EXCLUDE_RE.sub("", text).strip()
+
     match = COLUMN_SPEC_RE.match(text)
     if not match:
-        return Column(header=text)
+        return Column(header=text, exclude=excluded)
 
-    column = Column(header=match.group("header").strip())
+    column = Column(header=match.group("header").strip(), exclude=excluded)
 
     for raw in match.group("spec").split(","):
         spec = raw.strip()
         if not spec:
+            continue
+
+        if spec.lower() == "exclude":
+            column.exclude = True
             continue
 
         field = parse_media_field(spec, column.header, ctx, line)
@@ -274,6 +288,13 @@ def parse_column(cell: str, ctx: dict | None = None, line: int = 0) -> Column:
         if getattr(column, side) is not None and ctx is not None:
             warn(ctx, f"表头 [{column.header}] 的 @[...] 里 {side} 写了不止一次（用最后一次）", line)
         setattr(column, side, value)
+
+    if column.exclude and column.is_media and ctx is not None:
+        warn(
+            ctx,
+            f"表头 [{column.header}] 同时写了 @exclude 和 @[...]：整列都不出卡，@[...] 不生效",
+            line,
+        )
 
     return column
 

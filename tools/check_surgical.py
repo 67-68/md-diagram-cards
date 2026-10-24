@@ -313,6 +313,28 @@ def main() -> int:
         back_edited,
     )
 
+    # 9. 给某一列加 @exclude：那一列的卡（连 marker）一起消失，别的列 marker 原位不动。
+    column_excluded = media_synced.replace("例子音频@[front, back=频段]", "例子音频@exclude")
+    column_excluded_result = convert_inplace(column_excluded).text
+    column_generated = (
+        column_excluded_result.split("<!-- BEGIN GENERATED -->")[1]
+        if "<!-- BEGIN GENERATED -->" in column_excluded_result
+        else ""
+    )
+
+    failures += not _check(
+        "@exclude 那一列的卡被删掉（媒体卡不再产出）",
+        "例子音频" not in column_generated,
+        column_generated,
+    )
+    failures += not _check(
+        "@exclude 列不影响别的列的 marker",
+        "#### in [bands] [沉闷]'s [频段] is?\n- low\n<!--ID: 101-->" in column_excluded_result
+        and "#### in [bands] [明亮]'s [频段] is?\n- high\n<!--ID: 102-->" in column_excluded_result
+        and sorted(re.findall(r"<!--ID: (\d+)-->", column_excluded_result)) == ["101", "102"],
+        column_excluded_result,
+    )
+
     print()
     if failures:
         print(f"FAILED: {failures} 项")

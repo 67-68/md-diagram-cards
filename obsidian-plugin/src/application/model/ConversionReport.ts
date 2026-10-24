@@ -7,6 +7,8 @@ export interface DiagramSummary {
   cards: number;
   /** 标了 @exclude、整行跳过的行数（老版本 Python 可能没这个字段）。 */
   excluded?: number;
+  /** 表头标了 @exclude、整列不出卡的列数（老版本 Python 可能没这个字段）。 */
+  excluded_columns?: number;
 }
 
 export interface ConversionWarning {

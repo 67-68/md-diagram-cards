@@ -136,6 +136,27 @@ const MEDIA_BACK_SAMPLE: GuideSample[] = [
   },
 ];
 
+const EXCLUDE_SAMPLE: GuideSample[] = [
+  {
+    label: "写这样（备注@exclude / 行尾 @exclude）",
+    code: `### [d-orthogonal] 频段示例
+
+| 效果 | 频段 | 备注@exclude |
+| --- | --- | --- |
+| 沉闷 | 低频 | 自己记的：偏闷 |
+| 明亮 | 高频 | 自己记的：有点刺 |
+| 整体印象 @exclude | 这张表整体偏闷 | — |`,
+  },
+  {
+    label: "出这样（备注列、整体印象行都不出卡）",
+    code: `#### in [频段示例] [沉闷]'s [频段] is?
+- 低频
+
+#### in [频段示例] [明亮]'s [频段] is?
+- 高频`,
+  },
+];
+
 const TREE_SAMPLE: GuideSample[] = [
   {
     label: "写这样",
@@ -189,7 +210,7 @@ const RULE_LINES: string[] = [
   "cloze：答案有 2 个及以上，标题自动加 [cloze]；只有 1 个就不加。",
   "表格：每行都必须以 | 开头和结尾；第 1 列是实体轴，本身不出卡；表头为空、第 1 列为空、单元格为空 → 跳过。",
   "表格单元格里的多值用 <br> 分隔，行首的 - 会被剥掉。",
-  "辅助行：第 1 列（行实体）写 @exclude 的行整行不出卡（普通卡和媒体卡都不出），只当辅助理解；写在别的列或列表条目上会警告且不生效。",
+  "@exclude：标了什么就整个跳过什么，只当辅助理解 —— 表头写（备注@exclude）→ 整列不出卡；第 1 列（行实体）写 → 整行不出卡（普通卡和媒体卡都不出）。写错地方（别的数据列 / 列表条目）会警告且不生效。",
   "媒体列：表头写 列头@[front..., back...] 标出题面和答案各从哪来 —— 一侧可以写 front / back（用本列的值）、front=列头（用那一列的值）、front=列头(模板)（y 是值占位符）。例：例子音频@[front, back=频段] → 「例子音频a.mp3's 频段 is?」；例子音频@[back, front=频段(y)] → 「频段(低频)'s 例子音频 is?」。媒体列不出普通的「行实体's 列头 is?」卡；题库里的值多个（<br>）就一个值一张卡。缺 front / 缺 back / 列名指不到一列 → 警告且该列不出卡。",
   "Information 区：用 ### [information] 声明（层级不限）。一份文档可以写多个，会自动合并成一个全局字典 —— 同名项的不同外链取并集，同名外链后者覆盖前者。",
   "Information 写法：- 项 是父节点；- 外链: 值 是单值；- 外链: 后接缩进列表是列表值。空 bullet 会被忽略。",
@@ -485,6 +506,7 @@ export class MdDiagramCardsSettingTab extends PluginSettingTab {
     this.renderGuideSamples(bodyEl, "正交表", TABLE_SAMPLE);
     this.renderGuideSamples(bodyEl, "正交表：媒体列（音频 / 图片这类例子）", MEDIA_COLUMN_SAMPLE);
     this.renderGuideSamples(bodyEl, "正交表：媒体列反向 —— 音频当答案", MEDIA_BACK_SAMPLE);
+    this.renderGuideSamples(bodyEl, "正交表：辅助列 / 辅助行（@exclude）", EXCLUDE_SAMPLE);
     this.renderGuideSamples(bodyEl, "树状图", TREE_SAMPLE);
     this.renderGuideSamples(bodyEl, "Information 区（外链取值）", INFORMATION_SAMPLE);
 

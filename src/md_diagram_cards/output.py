@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 
 from .format import CLOZE_PREFIX, format_diagram, merge_categories
+from .model import Diagram
 from .parse import DIAGRAM_MARKER_RE, HEADING_RE, parse_document
 from .render import render_card, render_cards
 from .report import Conversion, DiagramSummary
@@ -165,7 +166,14 @@ def convert_inplace(text: str, categories: dict[str, str] | None = None) -> Conv
     for diagram in diagrams:
         cards = format_diagram(diagram, ctx)
         summaries.append(
-            DiagramSummary(diagram.kind, diagram.title, diagram.line + 1, len(cards), len(diagram.excluded))
+            DiagramSummary(
+                diagram.kind,
+                diagram.title,
+                diagram.line + 1,
+                len(cards),
+                len(diagram.excluded),
+                count_excluded_columns(diagram),
+            )
         )
         produced_cards.append(cards)
 
@@ -236,6 +244,11 @@ def convert_inplace(text: str, categories: dict[str, str] | None = None) -> Conv
     _apply_operations(lines, operations)
 
     return Conversion(text="\n".join(lines), warnings=ctx["warnings"], diagrams=summaries)
+
+
+def count_excluded_columns(diagram: Diagram) -> int:
+    """表头标了 `@exclude` 的列数（第 1 列是行实体，不算）。"""
+    return sum(1 for column in diagram.columns[1:] if column.exclude)
 
 
 def _collect_heading_positions(lines: list[str], blocks: list[_GeneratedBlock]) -> list[tuple[int, int, str]]:
@@ -543,7 +556,12 @@ def convert_new_file(text: str, categories: dict[str, str] | None = None) -> Con
         produced = format_diagram(diagram, ctx)
         summaries.append(
             DiagramSummary(
-                diagram.kind, diagram.title, diagram.line + 1, len(produced), len(diagram.excluded)
+                diagram.kind,
+                diagram.title,
+                diagram.line + 1,
+                len(produced),
+                len(diagram.excluded),
+                count_excluded_columns(diagram),
             )
         )
         cards.extend(produced)

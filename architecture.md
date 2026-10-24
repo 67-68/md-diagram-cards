@@ -22,9 +22,10 @@ parse_document(text) -> Context
 │       │
 │       ├─ [d-orthogonal] → parse_table(block, title, ctx)
 │       │   ├─ 表头每个单元格 → parse_column(cell, ctx)
-│       │   │   └─ `列头@[front, back=列头]` → Column(header, front, back)
-│       │   │       ├─ 一侧 = MediaField：own(本列) / column(哪一列) / template
-│       │   │       └─ 只是表头标注，和正文的 @cat 外链两套语法
+│       │   │   ├─ `列头@[front, back=列头]` → Column(header, front, back)
+│       │   │   │   └─ 一侧 = MediaField：own(本列) / column(哪一列) / template
+│       │   │   ├─ `列头@exclude` / `列头@[exclude]` → Column(exclude=True)
+│       │   │   └─ 只是表头标注，和正文的 @cat 外链两套语法
 │       │   └─ 对每个数据行:
 │       │       ├─ cells[0] 带 @exclude → 整行进 diagram.excluded，不产卡
 │       │       ├─ ctx["行实体"] = cells[0]
@@ -101,8 +102,9 @@ format(ctx) -> Card[]
 （值来自本列还是别的列、要不要套模板），产卡时只做两次「取值 → 拼题面 → 收答案」，
 所以 `@[front, back=频段]` 和 `@[back, front=频段(y)]` 走的是同一段代码。
 
-整行标了 `@exclude` 的行在解析阶段就进了 `diagram.excluded`，**根本到不了格式化层**：
-「这一行只是辅助说明」是解析期的判断，不需要每个 format_* 函数各判一遍。
+`@exclude` 在解析阶段就落位：整行标了的行进 `diagram.excluded`（**根本到不了格式化层**），
+整列标了的进 `Column.exclude`（`format_table` 循环里直接跳过）。
+「这个只是辅助说明」是解析期的判断，不需要每个 format_* 函数各判一遍。
 
 ---
 

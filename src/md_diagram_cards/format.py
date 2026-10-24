@@ -198,7 +198,7 @@ def format_table(diagram: Diagram, ctx: dict) -> list[Card]:
             continue
         for index, column in enumerate(columns):
             values = row.values[index] if index < len(row.values) else []
-            if not column.header:
+            if not column.header or column.exclude:
                 continue
             if column.is_media:
                 plan = media_plans[index]

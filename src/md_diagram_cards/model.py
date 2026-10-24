@@ -99,7 +99,8 @@ class Column:
         | 效果 | 频段 | 例子音频@[back, front=频段(y)] |
 
     - ``header`` 是剥掉标注后的列名（题面、`=` 后面的列名都按它匹配）；
-    - ``front`` / ``back`` 各自说明「题面」「答案」从哪来（见 MediaField）。
+    - ``front`` / ``back`` 各自说明「题面」「答案」从哪来（见 MediaField）；
+    - ``exclude=True`` 表示这一列整列不出卡（表头写 `@exclude`）。
 
     媒体列**不出**普通的 `in [表题] [行实体]'s [列头] is?` 卡。
     """
@@ -107,6 +108,7 @@ class Column:
     header: str = ""
     front: MediaField | None = None
     back: MediaField | None = None
+    exclude: bool = False
 
     @property
     def is_media(self) -> bool:
