@@ -32,7 +32,7 @@ interface GuideSample {
 const MARKER_ROWS: string[][] = [
   ["### [d-state] 标题", "时间线 / 状态机", "bullet 列表；条目可带 [时间] 前缀；行间可夹 => 推论 =>"],
   ["### [d-tree] 标题", "树状图", "嵌套 bullet 列表；缩进表示层级"],
-  ["### [d-orthogonal] 标题", "正交表", "标准 markdown 表格"],
+  ["### [d-orthogonal] 标题", "正交表", "标准 markdown 表格；表头可写 列头@[front, back=列头] 标出媒体列"],
 ];
 
 const STATE_SAMPLE: GuideSample[] = [
@@ -75,6 +75,38 @@ const TABLE_SAMPLE: GuideSample[] = [
 #### [cloze] in [战前形势] [Prussia]'s [战略目标] is?
 - 统一德意志
 - 夺回两公国`,
+  },
+];
+
+const MEDIA_COLUMN_SAMPLE: GuideSample[] = [
+  {
+    label: "写这样（表头带 @[front, back=列头]）",
+    code: `### [d-orthogonal] 频段示例
+
+| 效果 | 频段 | 例子音频@[front, back=频段] |
+| --- | --- | --- |
+| 沉闷 | 低频 | muddy-01.mp3 |
+| 明亮 | 中高频<br>高频 | bright-01.mp3<br>air-01.mp3 |`,
+  },
+  {
+    label: "出这样",
+    code: `#### in [频段示例] [沉闷]'s [频段] is?
+- 低频
+
+#### 例子音频muddy-01.mp3's 频段 is?
+- 低频
+
+#### [cloze] in [频段示例] [明亮]'s [频段] is?
+- 中高频
+- 高频
+
+#### [cloze] 例子音频bright-01.mp3's 频段 is?
+- 中高频
+- 高频
+
+#### [cloze] 例子音频air-01.mp3's 频段 is?
+- 中高频
+- 高频`,
   },
 ];
 
@@ -131,6 +163,7 @@ const RULE_LINES: string[] = [
   "cloze：答案有 2 个及以上，标题自动加 [cloze]；只有 1 个就不加。",
   "表格：每行都必须以 | 开头和结尾；第 1 列是实体轴，本身不出卡；表头为空、第 1 列为空、单元格为空 → 跳过。",
   "表格单元格里的多值用 <br> 分隔，行首的 - 会被剥掉。",
+  "媒体列：表头写 列头@[front, back=列头]（例如 例子音频@[front, back=频段]）—— 本列的值进题面、答案取同一行另一列，该列不出普通的「行实体's 列头 is?」卡；一个单元格多个媒体（<br>）就一个媒体一张卡。缺 front / 缺 back= / back= 指不到一列 → 警告且该列不出卡。",
   "Information 区：用 ### [information] 声明（层级不限）。一份文档可以写多个，会自动合并成一个全局字典 —— 同名项的不同外链取并集，同名外链后者覆盖前者。",
   "Information 写法：- 项 是父节点；- 外链: 值 是单值；- 外链: 后接缩进列表是列表值。空 bullet 会被忽略。",
   "指针：值从 Information 区里取。合法的只有 @cat、@cat: value、@custom(KEY) 三种；@[KEY] 和 @time: [KEY] 不是合法写法。",
@@ -423,6 +456,7 @@ export class MdDiagramCardsSettingTab extends PluginSettingTab {
     this.renderGuideTable(bodyEl, MARKER_ROWS);
     this.renderGuideSamples(bodyEl, "时间线 / 状态机", STATE_SAMPLE);
     this.renderGuideSamples(bodyEl, "正交表", TABLE_SAMPLE);
+    this.renderGuideSamples(bodyEl, "正交表：媒体列（音频 / 图片这类例子）", MEDIA_COLUMN_SAMPLE);
     this.renderGuideSamples(bodyEl, "树状图", TREE_SAMPLE);
     this.renderGuideSamples(bodyEl, "Information 区（外链取值）", INFORMATION_SAMPLE);
 

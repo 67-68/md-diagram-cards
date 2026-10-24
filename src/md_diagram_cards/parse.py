@@ -7,7 +7,8 @@ from __future__ import annotations
 
 import re
 
-from .model import Diagram, Inference, Item, Link, Row
+from .diagnostics import warn
+from .model import Column, Diagram, Inference, Item, Link, Row
 
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
 DIAGRAM_MARKER_RE = re.compile(r"^\[d-([a-z]+)\]\s*(.*)$")
@@ -18,6 +19,12 @@ INFERENCE_RE = re.compile(r"^=>\s*(.*?)\s*=>\s*$")
 BULLET_RE = re.compile(r"^([ \t]*)(?:[-*+]|\d+[.)])\s+(.*?)\s*$")
 BR_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
 BULLET_PREFIX_RE = re.compile(r"^(?:[-*+]|\d+[.)])\s+")
+
+# 表头标注：`例子音频@[front, back=频段]`。只对表头单元格生效，
+# 和正文里的 `@cat` 外链是两套语法，互不影响。
+COLUMN_SPEC_RE = re.compile(r"^(?P<header>.*?)\s*@\[(?P<spec>[^\[\]]*)\]\s*$")
+MEDIA_FRONT = "front"
+MEDIA_BACK_PREFIX = "back="
 
 CUSTOM_RE = re.compile(r"@custom\(\s*([^)]*?)\s*\)")
 CAT_VALUE_RE = re.compile(r"@([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([^@]*)")
@@ -175,7 +182,7 @@ def parse_diagram(block: dict, ctx: dict) -> Diagram | None:
     ctx["表头"] = title
 
     if kind == "orthogonal":
-        diagram = parse_table(block, title)
+        diagram = parse_table(block, title, ctx)
     elif kind == "state":
         diagram = parse_list(block, title)
     elif kind == "tree":
@@ -189,16 +196,30 @@ def parse_diagram(block: dict, ctx: dict) -> Diagram | None:
 
 # ---------------------------------------------------------------- 正交表
 
-def parse_table(block: dict, title: str) -> Diagram:
-    table_lines = [line for line in block["body"] if line.strip().startswith("|")]
+def parse_table(block: dict, title: str, ctx: dict | None = None) -> Diagram:
+    # 保留每行在原文里的 1-based 行号，警告/报告都靠它指位置。
+    table_lines = [
+        (block["line"] + 1 + offset + 1, line)
+        for offset, line in enumerate(block["body"])
+        if line.strip().startswith("|")
+    ]
     diagram = Diagram(kind="orthogonal", title=title, line=block["line"])
 
     if len(table_lines) < 2:
         return diagram
 
-    diagram.headers = split_row(table_lines[0])
+    header_line = table_lines[0][0]
+    columns = [parse_column(cell, ctx, header_line) for cell in split_row(table_lines[0][1])]
 
-    for offset, raw in enumerate(table_lines[2:]):
+    # 第 1 列是行实体，不产卡，标了媒体列也是白标。
+    if columns and columns[0].is_media:
+        if ctx is not None:
+            warn(ctx, "表格第 1 列是行实体，不能写 @[...] 媒体列标注（已忽略）", header_line)
+        columns[0] = Column(header=columns[0].header)
+
+    diagram.columns = columns
+
+    for line_no, raw in table_lines[2:]:
         cells = split_row(raw)
         if not cells:
             continue
@@ -208,9 +229,41 @@ def parse_table(block: dict, title: str) -> Diagram:
             continue  # 行实体为空 → 跳过整行
 
         values = [split_cell_values(cell) for cell in cells[1:]]
-        diagram.rows.append(Row(entity=entity, values=values, line=block["line"] + offset + 3))
+        diagram.rows.append(Row(entity=entity, values=values, line=line_no))
 
     return diagram
+
+
+def parse_column(cell: str, ctx: dict | None = None, line: int = 0) -> Column:
+    """解析表头单元格：`列头` 或 `列头@[front, back=列头]`（媒体列）。
+
+    标注写法逗号分隔，只支持 `front` 和 `back=列头` 两种。认不出的写法 →
+    警告，但不影响这一列本身（该列仍按能认出来的部分处理）。
+    """
+    text = cell.strip()
+    match = COLUMN_SPEC_RE.match(text)
+    if not match:
+        return Column(header=text)
+
+    column = Column(header=match.group("header").strip())
+
+    for raw in match.group("spec").split(","):
+        spec = raw.strip()
+        if not spec:
+            continue
+        if spec == MEDIA_FRONT:
+            column.front = True
+        elif spec.startswith(MEDIA_BACK_PREFIX):
+            column.back = spec[len(MEDIA_BACK_PREFIX):].strip()
+        elif ctx is not None:
+            warn(
+                ctx,
+                f"表头 [{column.header}] 的 @[...] 标注里有认不出的写法: {spec}"
+                "（只支持 front / back=列头）",
+                line,
+            )
+
+    return column
 
 
 def split_row(line: str) -> list[str]:

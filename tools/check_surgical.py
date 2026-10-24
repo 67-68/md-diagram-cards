@@ -27,36 +27,55 @@ SOURCE = """### [d-orthogonal] situation
 """
 
 
+NOTE_ID_RE = re.compile(r"^\s*<!--\s*ID:\s*(\d+)\s*-->\s*$")
+
+
 def _inject_ahs_markers(text: str, *, last_after_end: bool = False) -> str:
-    """模拟 AHS 在主链写 marker 的形态，便于测试。"""
+    """模拟 AHS 在主链写 marker 的形态，便于测试。
+
+    真实的 AHS 会**复用**已有 marker，只给还没有身份的新卡发号，所以这里
+    也照做：已经有 `<!--ID: n-->` 的卡片原样保留，编号从已有的最大号往后排。
+    """
     lines = text.split("\n")
     begin = lines.index("<!-- BEGIN GENERATED -->")
     end = lines.index(END_MARK)
     chunks = _split_card_chunks(lines[begin + 1:end])
 
     body: list[str] = []
-    next_note_id = 101
+    # 已经有身份的卡片先占号，新卡从“已有的最大号 + 1”往后发，避免撞号。
+    known_ids = [int(m.group(1)) for chunk in chunks for line in chunk if (m := NOTE_ID_RE.match(line))]
+    next_note_id = max([101, *(known_id + 1 for known_id in known_ids)])
     last_note_id = 0
 
     for chunk_index, chunk in enumerate(chunks):
         while chunk and not chunk[-1].strip():
             chunk.pop()
 
-        body.extend(chunk)
+        existing = [int(match.group(1)) for line in chunk if (match := NOTE_ID_RE.match(line))]
         is_last = chunk_index == len(chunks) - 1
-        last_note_id = next_note_id
-        if not (is_last and last_after_end):
-            body.append(f"<!--ID: {next_note_id}-->")
-        next_note_id += 1
 
-        if chunk_index != len(chunks) - 1:
+        body.extend(chunk)
+
+        if existing:
+            last_note_id = existing[-1]
+            next_note_id = max(next_note_id, last_note_id + 1)
+        else:
+            last_note_id = next_note_id
+            if not (is_last and last_after_end):
+                body.append(f"<!--ID: {next_note_id}-->")
+            next_note_id += 1
+
+        if not is_last:
             body.append("")
 
     tail = [END_MARK]
     if last_after_end and chunks:
         tail.append(f"<!--ID: {last_note_id}-->")
 
-    return "\n".join([*lines[: begin + 1], *body, *tail, *lines[end + 1:]])
+    # END 后面原本可能已经躺着一个 marker（上一次 AHS 写的），重排后由上面重新发。
+    leftovers = [line for line in lines[end + 1:] if not NOTE_ID_RE.match(line)]
+
+    return "\n".join([*lines[: begin + 1], *body, *tail, *leftovers])
 
 
 def _check(label: str, condition: bool, detail: str = "") -> bool:
@@ -180,6 +199,68 @@ def main() -> int:
     failures += not _check(
         "内容改写、题面不变的卡片保留原 marker",
         "#### B means\n- db edited\n<!--ID: 104-->" in state_edited_result,
+    )
+
+    # 6. 给已有表格加一个媒体列（`列头@[front, back=列头]`）：
+    #    旧卡的 marker 留在原卡上，新产出的媒体卡不带 marker。
+    media_source = """### [d-orthogonal] bands
+
+| 效果 | 频段 |
+| --- | --- |
+| 沉闷 | low |
+| 明亮 | high |
+"""
+    media_marked = _inject_ahs_markers(convert_inplace(media_source).text, last_after_end=True)
+    media_added = (
+        media_marked
+        .replace("| 效果 | 频段 |", "| 效果 | 频段 | 例子音频@[front, back=频段] |")
+        .replace("| 沉闷 | low |", "| 沉闷 | low | low-01.mp3 |")
+        .replace("| 明亮 | high |", "| 明亮 | high | high-01.mp3 |")
+    )
+    media_result = convert_inplace(media_added).text
+
+    failures += not _check(
+        "新增媒体列后旧 marker 原位不动",
+        "#### in [bands] [沉闷]'s [频段] is?\n- low\n<!--ID: 101-->" in media_result
+        and "#### in [bands] [明亮]'s [频段] is?\n- high\n<!--ID: 102-->" in media_result,
+    )
+    failures += not _check(
+        "新增的媒体卡不带旧 marker",
+        "#### 例子音频low-01.mp3's 频段 is?\n- low\n\n" in media_result
+        and "#### 例子音频high-01.mp3's 频段 is?\n- high\n" in media_result
+        and sorted(re.findall(r"<!--ID: (\d+)-->", media_result)) == ["101", "102"],
+    )
+    failures += not _check(
+        "媒体列不出「效果's 例子音频 is?」这种卡",
+        "例子音频] is?" not in media_result,
+    )
+
+    # 6b. 媒体卡入库之后：只改答案列的值（题面没变）→ 媒体卡保住 marker。
+    media_synced = _inject_ahs_markers(media_result, last_after_end=True)
+    media_tuned = media_synced.replace("| 沉闷 | low |", "| 沉闷 | low freq |")
+    media_tuned_result = convert_inplace(media_tuned).text
+    failures += not _check(
+        "答案改写、题面不变 → 媒体卡与普通卡都保住 marker",
+        "#### in [bands] [沉闷]'s [频段] is?\n- low freq\n<!--ID: 101-->" in media_tuned_result
+        and "#### 例子音频low-01.mp3's 频段 is?\n- low freq\n<!--ID: 103-->" in media_tuned_result
+        and "#### 例子音频high-01.mp3's 频段 is?\n- high\n<!--ID: 104-->" in media_tuned_result,
+    )
+
+    # 6c. 只改音频文件名、答案没变 → 视作“改名”，marker 跟着走（AHS 走 update）。
+    media_renamed = media_synced.replace("| 明亮 | high | high-01.mp3 |", "| 明亮 | high | high-01b.mp3 |")
+    media_renamed_result = convert_inplace(media_renamed).text
+    failures += not _check(
+        "换音频文件名（答案没变）→ marker 跟着走",
+        "#### 例子音频high-01b.mp3's 频段 is?\n- high\n<!--ID: 104-->" in media_renamed_result,
+    )
+
+    # 6d. 音频和答案都换了 → 判不准，一律当新卡：新卡不带任何旧 marker。
+    media_replaced = media_synced.replace("| 明亮 | high | high-01.mp3 |", "| 明亮 | mid | high-02.mp3 |")
+    media_replaced_result = convert_inplace(media_replaced).text
+    failures += not _check(
+        "音频和答案都换了 → 新卡不带 marker，旧 marker 丢弃",
+        "#### 例子音频high-02.mp3's 频段 is?\n- mid\n<!-- END GENERATED -->" in media_replaced_result
+        and sorted(re.findall(r"<!--ID: (\d+)-->", media_replaced_result)) == ["101", "102", "103"],
     )
 
     print()

@@ -5,7 +5,7 @@
 
 - 语法规格：[`spec.md`](spec.md)
 - 架构与分层：[`architecture.md`](architecture.md)
-- 回归基线：[`fixtures/`](fixtures/)（15 组）
+- 回归基线：[`fixtures/`](fixtures/)（18 组）
 
 ## 语法速览
 
@@ -26,6 +26,32 @@
 ```
 
 答案项数 ≥ 2 自动加 `[cloze]`。
+
+### 正交表的媒体列
+
+表头可以在列名后面跟一个 `@[front, back=列头]` 标注，把这一列标成**媒体列**
+（音频、图片这类「例子」）：
+
+```markdown
+| 效果 | 频段 | 例子音频@[front, back=频段] |
+| --- | --- | --- |
+| 沉闷 | 低频 | muddy-01.mp3 |
+| 明亮 | 中高频<br>高频 | bright-01.mp3<br>air-01.mp3 |
+```
+
+- `front` = 本列的值写进题面；`back=列头` = 答案取同一行那一列的值
+- 媒体列**不出**普通的 `in [表题] [行实体]'s [列头] is?` 卡 ——
+  不会有「效果's 例子音频 is?」这种卡
+- 一个单元格多个媒体（`<br>`）→ 一个媒体一张卡
+
+产出：
+
+```markdown
+#### 例子音频muddy-01.mp3's 频段 is?
+- 低频
+```
+
+标注写坏（缺 `front` / 缺 `back=` / `back=` 指不到一列 / 答案列这行为空）→ 警告 + 该列不出卡。
 
 没有 `[d-*]` 标记的标题只作组织用，**不出卡** —— 这是「提示成功但没有卡片」最常见的原因。
 插件设置页顶部有一份同样的速查。
@@ -169,6 +195,7 @@ python3 tools/check_fixtures.py      # 卡片产出是否与 expected 一致
 python3 tools/check_idempotent.py    # inplace 模式是否幂等
 python3 tools/check_report.py        # 报告里的卡片数是否和 expected 对得上
 python3 tools/check_surgical.py      # 改表头/增删内容时 marker 是否按卡保留（新卡不继承）
+python3 tools/check_media.py         # 正交表媒体列：题面/答案取对列、不出普通卡、标注写坏要警告
 ```
 
 ```bash

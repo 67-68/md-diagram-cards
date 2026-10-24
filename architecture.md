@@ -20,13 +20,13 @@ parse_document(text) -> Context
 ├─ parse_diagrams(blocks)
 │   └─ 对每个 [d-*] 标题，按标记分派:
 │       │
-│       ├─ [d-orthogonal] → parse_table(block, ctx)
-│       │   ├─ ctx["表头"] = block.title          ← 往 context 加一行
+│       ├─ [d-orthogonal] → parse_table(block, title, ctx)
+│       │   ├─ 表头每个单元格 → parse_column(cell, ctx)
+│       │   │   └─ `列头@[front, back=列头]` → Column(header, front, back)
+│       │   │       └─ 只是表头标注，和正文的 @cat 外链两套语法
 │       │   └─ 对每个数据行:
 │       │       ├─ ctx["行实体"] = cells[0]
-│       │       └─ 对每个单元格:
-│       │           ├─ ctx["列头"] = headers[i]
-│       │           └─ parse_item(cell, ctx)      ← 复用
+│       │       └─ 其余单元格 → split_cell_values: `<br>` 切多值
 │       │
 │       ├─ [d-state] → parse_list(block, ctx)     ← 扁平列表
 │       │   └─ 对每个 bullet:
@@ -77,8 +77,11 @@ format(ctx) -> Card[]
 │       └─ ④ 递归处理每个子节点
 │
 └─ [d-orthogonal] → format_table(d, ctx)
-    └─ 对每个 (行实体, 列头, 单元格):
-        make_card("in [{表题}] [{行实体}]'s [{列头}] is?", 单元格的值列表)
+    └─ 对每个 (行实体, 列, 单元格):
+        ├─ 普通列: make_card("in [{表题}] [{行实体}]'s [{列头}] is?", 单元格的值列表)
+        └─ 媒体列 (Column.is_media): format_media_column(row, column, ...)
+            └─ make_card("{列头}{本列的值}'s {back 列头} is?", back 列同一行的值列表)
+                ← 不出普通卡；一行多个媒体 → 一个媒体一张卡
 ```
 
 `format_list` 同时产「整张图的卡」和「每条项的卡」—— 这就是
@@ -86,6 +89,10 @@ format(ctx) -> Card[]
 把具体的每个项交给更细的函数」。
 
 `format_tree` 同理：每个节点自己产「父问子」卡，再递归下行。
+
+`format_table` 是「一列一种产卡方式」：普通列问「这一行的这列是什么」，
+媒体列（表头标了 `@[front, back=列头]`）问「这个例子音频属于哪一档」——
+音频不是表格的一个维度，不跟行实体组成卡片。
 
 ---
 
@@ -105,6 +112,8 @@ def make_card(question, answers):
 ## 分层是否合理
 
 - 解析层没有「严格层级」——`parse_item` 被三个上层复用
+- 警告形状只定义一份（`diagnostics.warn`）：解析层（表头标注写坏）和格式化层
+  （外链查不到、模板占位符非法）都往里写同一种 `{message, line}`
 - 格式化层刻意做成递归——层级高的函数可以超额产卡（整体卡、父问子卡）
 - context 是普通 dict，任何层都能读写，不做类型约束
 

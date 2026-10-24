@@ -25,6 +25,7 @@
 | 15 | `15-tree-nested` | `[d-tree]` 嵌套缩进 → 父问子卡片 + `means` 卡 |
 | 16 | `16-multi-information` | `### [information]` 标记；多个 Information 块合并（含旧 `## Information` 兼容） |
 | 17 | `17-builtin-extra-categories` | 内置 `ability` / `position` / `name` category 出卡 |
+| 18 | `18-table-media-column` | 表头 `@[front, back=列头]` 媒体列：值进题面、答案取另一列、不出普通表格卡 |
 
 ## 已澄清（无待定项）
 
@@ -43,6 +44,8 @@
   - 同名项的不同外链取并集，同名外链后者覆盖前者
   - 旧的纯 `## Information` 标题仍兼容
 - **表格是标准单行 CommonMark**：每行以 `|` 开头和结尾；单元格内换行用 `<br>`
+- **媒体列**：表头 `列头@[front, back=列头]` —— 本列的值进题面、答案取同一行另一列，
+  该列不出普通表格卡（`@[...]` 只对表头生效，与正文里的 `@cat` 外链无关）
 - **警告仅提示**：不阻断同步，不写回源文件
 - **推论行任一侧为空 → 警告 + 跳过**
 - **空值一律跳过**：表头空 / 行实体空 / 单元格空

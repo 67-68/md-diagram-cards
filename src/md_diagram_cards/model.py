@@ -63,8 +63,32 @@ class Inference:
 
 
 @dataclass
+class Column:
+    """正交表的一列（表头单元格）。
+
+    表头可以带 `@[front, back=列头]` 标注，标成**媒体列**：
+
+        | 效果 | 频段 | 例子音频@[front, back=频段] |
+
+    - ``header`` 是剥掉标注后的列名（题面、back= 按这个匹配）；
+    - ``front`` 表示把本列单元格的值写进题面；
+    - ``back`` 是答案列名（同一行里那一列的值当答案）。
+
+    媒体列**不出**普通的 `in [表题] [行实体]'s [列头] is?` 卡。
+    """
+
+    header: str = ""
+    front: bool = False
+    back: str = ""
+
+    @property
+    def is_media(self) -> bool:
+        return self.front or bool(self.back)
+
+
+@dataclass
 class Row:
-    """正交表的一行。values 与 headers[1:] 对齐（第 1 列被抽成 entity）。"""
+    """正交表的一行。values 与 columns[1:] 对齐（第 1 列被抽成 entity）。"""
 
     entity: str
     values: list[list[str]] = field(default_factory=list)
@@ -83,8 +107,13 @@ class Diagram:
     items: list[Item] = field(default_factory=list)
     inferences: list[Inference] = field(default_factory=list)
     # orthogonal
-    headers: list[str] = field(default_factory=list)
+    columns: list[Column] = field(default_factory=list)
     rows: list[Row] = field(default_factory=list)
+
+    @property
+    def headers(self) -> list[str]:
+        """各列的列名（已剥掉 `@[...]` 标注）。"""
+        return [column.header for column in self.columns]
 
 
 @dataclass
